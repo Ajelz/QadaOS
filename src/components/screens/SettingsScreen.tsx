@@ -14,6 +14,7 @@ import { FARD_PRAYERS, PRAYER_LABEL, type Prayer } from "@/domain/types";
 import { addPasskey, signOut, useSession } from "@/lib/auth-client";
 import { fmtInt } from "@/lib/format";
 import { disablePush, enablePush, isIosNotInstalled, pushSupported } from "@/lib/pushClient";
+import { useClientValue } from "@/lib/useClientValue";
 import { getDb } from "@/store/db";
 import { useLedger, useLedgerActions, useSettings, useSettingsActions } from "@/store/hooks";
 
@@ -75,6 +76,7 @@ export function SettingsScreen() {
   const [delta, setDelta] = useState("");
   const [note, setNote] = useState("");
   const prayers: Prayer[] = settings.prayer.trackWitr ? [...FARD_PRAYERS, "witr"] : [...FARD_PRAYERS];
+  const canPush = useClientValue(pushSupported, false);
 
   const setPrayer = (p: Partial<SettingsDoc["prayer"]>) => patch((d) => ({ ...d, prayer: { ...d.prayer, ...p } }));
   const setReminders = (r: Partial<SettingsDoc["reminders"]>) => patch((d) => ({ ...d, reminders: { ...d.reminders, ...r } }));
@@ -140,7 +142,7 @@ export function SettingsScreen() {
       <div className="flex flex-col gap-3">
         <Card>
           <CardTitle>Account</CardTitle>
-          <Row label={session?.user.name ?? "Signed in"} hint={session?.user.email ?? (process.env.NEXT_PUBLIC_AUTH_OPTIONAL === "true" ? "auth optional (dev)" : "offline")}>
+          <Row label={session?.user.name ?? "Signed in"} hint={session?.user.email ?? (process.env.NEXT_PUBLIC_AUTH_OPTIONAL === "true" ? "auth optional (dev)" : "session unavailable")}>
             <Button size="sm" onClick={() => signOut().then(() => router.replace("/sign-in"))}>
               Sign out
             </Button>
@@ -196,7 +198,7 @@ export function SettingsScreen() {
 
         <Card>
           <CardTitle>Reminders</CardTitle>
-          <Row label="Push notifications" hint={pushSupported() ? "At each prayer's start, plus an evening review" : "Not supported in this browser"}>
+          <Row label="Push notifications" hint={canPush ? "At each prayer's start, plus an evening review" : "Not supported in this browser"}>
             <Toggle on={settings.reminders.enabled} onChange={toggleReminders} label="Push notifications" />
           </Row>
           {settings.reminders.enabled && (

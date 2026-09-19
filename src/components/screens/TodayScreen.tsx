@@ -122,7 +122,7 @@ export function TodayScreen() {
               <div className="text-right text-[12px] font-bold">
                 {firstEvent && <span className="text-mute">since {fmtDay(firstEvent)}</span>}
                 <Chip tone={net <= 0 ? "yellow" : "coral"} className="num mt-1.5 flex justify-end">
-                  {net <= 0 ? "−" : "+"}
+                  {net === 0 ? "" : net < 0 ? "−" : "+"}
                   {fmtInt(Math.abs(net))} net
                 </Chip>
               </div>

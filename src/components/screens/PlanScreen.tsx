@@ -110,7 +110,7 @@ export function PlanScreen() {
             <div className="display num mt-1 text-[26px]">{pace.finishDay ? (pace.daysToFinish === 0 ? "Done" : fmtMonth(pace.finishDay)) : "—"}</div>
             <div className="mt-1 text-[11px] font-semibold text-mute">
               {pace.finishDay && pace.daysToFinish ? fmtRelativeDays(pace.daysToFinish) : pace.netPerDay <= 0 ? "not finishing at this pace" : ""}
-              {` · net ${pace.netPerDay.toFixed(1)}/day`}
+              {` · net ${Math.abs(pace.netPerDay) < 0.05 ? "0.0" : pace.netPerDay.toFixed(1)}/day`}
             </div>
           </Card>
         </div>

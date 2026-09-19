@@ -15,7 +15,7 @@ function dayToDate(day: PrayerDay): Date {
 
 /** "Sat 19 Sep" */
 export function fmtDay(day: PrayerDay): string {
-  return new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(dayToDate(day));
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(dayToDate(day)).replace("Sept", "Sep");
 }
 
 /** "19 Sep 2026" */
