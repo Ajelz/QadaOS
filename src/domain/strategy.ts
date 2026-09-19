@@ -160,7 +160,7 @@ export interface Template {
   build: (order: Prayer[]) => Strategy;
 }
 
-const newId = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+const newId = () => crypto.randomUUID();
 
 export const TEMPLATES: Template[] = [
   {
