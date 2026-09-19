@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && serwist build serwist.config.ts",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -34,6 +34,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
+    "@serwist/cli": "^9.5.12",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -44,6 +45,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "fake-indexeddb": "^6.2.5",
     "fast-check": "^4.0.0",
     "tailwindcss": "^4",
     "tsx": "^4.20.0",

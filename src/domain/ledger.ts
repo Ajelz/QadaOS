@@ -131,8 +131,8 @@ export function reduce(input: readonly LedgerEvent[]): LedgerState {
       case "strategy.started": {
         const open = state.periods.find((p) => !p.endedAt);
         if (open) open.endedAt = e.occurredAt;
-        const { v: _v, ...strategy } = e.payload;
-        state.periods.push({ strategy, startedAt: e.occurredAt, eventId: e.id });
+        const { strategyId, name, rules, order } = e.payload;
+        state.periods.push({ strategy: { strategyId, name, rules, order }, startedAt: e.occurredAt, eventId: e.id });
         break;
       }
       case "strategy.stopped": {

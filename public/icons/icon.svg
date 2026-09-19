@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" fill="#FAF3E7"/>
+  <!-- offset hard shadow -->
+  <rect x="120" y="120" width="300" height="300" rx="52" fill="#141414"/>
+  <!-- coral card -->
+  <rect x="96" y="96" width="300" height="300" rx="52" fill="#F26D6D" stroke="#141414" stroke-width="14"/>
+  <!-- yellow tally block -->
+  <rect x="150" y="150" width="192" height="192" rx="28" fill="#F8DE5A" stroke="#141414" stroke-width="12"/>
+  <!-- tally marks: four strokes and a cross stroke -->
+  <g stroke="#141414" stroke-width="16" stroke-linecap="round">
+    <line x1="190" y1="196" x2="190" y2="296"/>
+    <line x1="228" y1="196" x2="228" y2="296"/>
+    <line x1="266" y1="196" x2="266" y2="296"/>
+    <line x1="304" y1="196" x2="304" y2="296"/>
+    <line x1="176" y1="300" x2="318" y2="192"/>
+  </g>
+  <!-- teal star sticker -->
+  <path d="M414 60 l14 30 32 5 -23 23 6 32 -29 -15 -29 15 6 -32 -23 -23 32 -5z" fill="#5FC9B6" stroke="#141414" stroke-width="10" stroke-linejoin="round"/>
+</svg>

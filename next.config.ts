@@ -1,16 +1,12 @@
-import withSerwistInit from "@serwist/next";
 import type { NextConfig } from "next";
 
-const withSerwist = withSerwistInit({
-  swSrc: "src/app/sw.ts",
-  swDest: "public/sw.js",
-  cacheOnNavigation: true,
-  reloadOnOnline: false,
-  disable: process.env.NODE_ENV === "development",
-});
-
+/**
+ * The service worker is built by `serwist build` (see serwist.config.ts) after
+ * `next build`, so this config stays bundler-agnostic and works with Turbopack.
+ */
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  turbopack: {},
   async headers() {
     return [
       {
@@ -24,4 +20,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withSerwist(nextConfig);
+export default nextConfig;
