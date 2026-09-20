@@ -153,7 +153,7 @@ export function TodayScreen() {
                   {net === 0 ? "" : net < 0 ? "−" : "+"}
                   {fmtInt(Math.abs(net))} {net < 0 ? "fewer" : "more"}
                 </Chip>}
-                {firstEvent && <span className="whitespace-nowrap text-[11px] font-semibold text-mute">{net !== 0 ? "than when you started, " : "started "}{fmtDay(firstEvent)}</span>}
+                {firstEvent && <span className="whitespace-nowrap text-[11px] font-semibold text-mute">{net !== 0 ? "since " : "started "}{fmtDay(firstEvent)}</span>}
               </div>
             </div>
             {buffer > 0 && <p className="mt-2 text-[13px] font-bold">Plus {fmtInt(buffer)} extra, past your estimate. A buffer is a good thing.</p>}

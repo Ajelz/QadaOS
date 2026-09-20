@@ -1,73 +1,182 @@
+<p align="center">
+  <a href="https://qadaos.vercel.app">
+    <img src="docs/media/hero.png" alt="QadaOS. One honest ledger for the prayers you owe. Three phone screens show the Today, Plan and Stats tabs." width="100%" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://qadaos.vercel.app"><b>Open the app</b></a>
+  &nbsp;·&nbsp;
+  <a href="#watch-it">Watch it</a>
+  &nbsp;·&nbsp;
+  <a href="#take-the-tour">Take the tour</a>
+  &nbsp;·&nbsp;
+  <a href="#run-your-own">Run your own</a>
+</p>
+
 # QadaOS
 
-Track the prayers you owe, the ones you pray today, and a plan to close the gap. Switch plans as often as you like. The math never breaks.
+Years of missed prayers turn into one number you would rather not look at. QadaOS keeps that number honest and makes it fall.
 
-QadaOS is an installable web app (PWA) for Muslims making up missed prayers (qada). It keeps one ledger for two things that move the same number in opposite directions: qada you complete, and daily prayers you miss going forward. On top of the ledger sit switchable catch-up strategies that generate daily targets and a projected finish date without ever touching the recorded facts.
+You record today's prayers in a tap. You make up missed ones (qada) on a plan that fits your life. You can switch plans whenever you like, and nothing you have already logged ever changes.
 
-- **Append-only ledger.** Every action is an immutable event. Debt, targets, adherence and projections are derived. Undo is itself an event.
-- **Pending, never auto-missed.** A daily prayer whose window closes without a log becomes pending. You resolve it. Nothing inflates silently.
-- **Composable strategies with history.** "Two Fajr with Fajr, three more at night, then move down the order." Every switch closes a period and opens a new one, each with its own adherence report.
-- **Local-first, synced.** Works fully offline. Changes queue and sync when online. Two devices on one account converge.
-- **No streaks, no guilt.** Progress and pace only. Missing a day is a fact in the ledger, not a broken chain.
-- **Fiqh is configuration.** Calculation method, Asr rule, Witr tracking and the Isha boundary are settings with neutral defaults. QadaOS takes no position.
+It is a web app you install from the browser. It is free, open source, and it works offline.
 
-## Stack
+## Watch it
 
-Next.js 16 (App Router, Turbopack), React 19, TypeScript, Tailwind 4, Drizzle + Postgres (Neon), better-auth (Google + passkeys), Dexie (IndexedDB), adhan (prayer times), Serwist (service worker), web-push. Tests: vitest for the domain and store, Playwright for end-to-end.
+<p align="center">
+  <a href="docs/media/qadaos.mp4">
+    <img src="docs/media/qadaos.gif" alt="A 20 second tour: the owed number, one tap to record a prayer, one tap to log qada, and switching plans without changing the ledger." width="100%" />
+  </a>
+</p>
 
-The domain package in `src/domain` is pure TypeScript with zero React or database imports. The UI never computes debt, windows or targets; it only calls the domain.
+<p align="center"><sub>Twenty seconds. Click it for the full quality video. There is no music, on purpose.</sub></p>
 
-## Run it locally
+## Take the tour
 
-Requirements: Node 24 (see `.nvmrc`).
+<table>
+  <tr>
+    <td width="33%"><img src="docs/media/shots/today.png" alt="Today tab" /></td>
+    <td width="33%"><img src="docs/media/shots/plan.png" alt="Plan tab" /></td>
+    <td width="33%"><img src="docs/media/shots/stats.png" alt="Stats tab" /></td>
+  </tr>
+  <tr>
+    <td valign="top"><b>Today.</b> What you owe, today's five prayers, and today's targets. The coral button is always the next thing to do.</td>
+    <td valign="top"><b>Plan.</b> Rules like "two Fajr with Fajr, three more at night". You see when you would finish on the plan, and at your real pace.</td>
+    <td valign="top"><b>Stats.</b> What you made up this week, this month, this quarter, and the whole debt over time.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/shots/log-qada.png" alt="Log qada sheet" /></td>
+    <td><img src="docs/media/shots/history.png" alt="History tab" /></td>
+    <td><img src="docs/media/shots/onboarding-plan.png" alt="Picking a starting plan" /></td>
+  </tr>
+  <tr>
+    <td valign="top"><b>Log qada.</b> Pick a prayer, pick a count, done. You can backdate it, or make up a whole day at once.</td>
+    <td valign="top"><b>History.</b> Everything you recorded, newest first. Every line has an undo, and every undo can be restored.</td>
+    <td valign="top"><b>Starting out.</b> Not sure how many you owe? Estimate from two dates. Every plan shows its finish date before you choose.</td>
+  </tr>
+</table>
+
+It also stretches out on a big screen.
+
+<p align="center"><img src="docs/media/shots/desktop-today.png" alt="The Today tab on a desktop, with a side rail instead of a tab bar" width="80%" /></p>
+
+## Questions people ask
+
+<details>
+<summary><b>What happens if I miss a prayer today?</b></summary>
+<br />
+Nothing happens by itself. When a prayer's time passes without an answer it becomes <i>pending</i>, and the app asks you later. You say on time, late, missed or exempt. Only a miss you confirm is added to what you owe.
+</details>
+
+<details>
+<summary><b>Can I change my plan halfway through?</b></summary>
+<br />
+Yes, as often as you like. A plan only decides today's targets and the projected finish date. Your logged prayers are separate facts, so switching never loses or rewrites them. Each plan you used keeps its own report of how closely you followed it.
+</details>
+
+<details>
+<summary><b>I logged something by mistake. Now what?</b></summary>
+<br />
+Undo it from the toast or from History. The undo is recorded too, so you can restore it, and two devices never disagree about what happened.
+</details>
+
+<details>
+<summary><b>Does it follow a particular school?</b></summary>
+<br />
+No. The prayer time method, the Asr rule, whether you track Witr, and when Isha ends are all settings with neutral defaults. QadaOS keeps the count. Questions of fiqh belong with someone qualified to answer them.
+</details>
+
+<details>
+<summary><b>Where are the streaks and badges?</b></summary>
+<br />
+There are none, and there never will be. You get progress and pace. A missed day is a fact in the ledger, not a broken chain.
+</details>
+
+<details>
+<summary><b>Does it work without a connection? Who can see my data?</b></summary>
+<br />
+Everything works offline and syncs when you are back online. Sign in with Google or a passkey and your phone and laptop stay in step. The hosted app has no analytics, shares nothing, lets you export everything, and deletes everything when you ask.
+</details>
+
+## Try it in a minute
+
+1. Open **[qadaos.vercel.app](https://qadaos.vercel.app)** on your phone and sign in.
+2. Set your location, so prayer times are right.
+3. Enter what you owe, or estimate it from two dates.
+4. Pick a starting plan. You can change it later.
+5. Add it to your Home Screen. On iPhone, reminders only work once it is installed.
+
+## Under the hood
+
+QadaOS is built with Next.js, React, TypeScript and Tailwind. Postgres holds the synced copy, IndexedDB holds the copy on your device, and a service worker makes it installable and offline.
+
+The interesting part is small. Every action is an immutable event with an id made on your device. What you owe, today's targets and the finish dates are all calculated from those events and never stored. Sync is a plain set union, so two devices always arrive at the same ledger.
+
+<details>
+<summary><b>The seven events</b></summary>
+<br />
+
+`debt.set_initial`, `debt.adjust`, `qada.logged`, `daily.resolved`, `strategy.started`, `strategy.stopped` and `event.revoked`.
+
+The device pushes its outbox. The server inserts with `ON CONFLICT DO NOTHING` and hands out an increasing sequence number. The device pulls everything after its cursor. The reducer sorts by time and id, so the result is the same everywhere.
+
+All of this lives in `src/domain`, which is plain TypeScript with no React and no database. The screens never do the math themselves.
+
+</details>
+
+<details>
+<summary><b>Run it locally</b></summary>
+<br />
+
+You need Node 24.
 
 ```bash
 npm install --legacy-peer-deps
-cp .env.example .env
-# Fill in .env, or leave it and run with auth optional (below)
-npm run dev
-```
-
-Without a database or Google credentials you can still run the whole UI:
-
-```bash
 NEXT_PUBLIC_AUTH_OPTIONAL=true npm run dev
 ```
 
-Sync will fail quietly and the app keeps working on this device. Never set that variable in production.
+That runs the whole app with no database and no Google credentials. Sync fails quietly and everything keeps working on your device. Never set that variable in production.
 
 ```bash
-npm test          # domain + store unit tests
-npm run test:e2e  # Playwright smoke suite (starts its own dev server)
-npm run typecheck
-npm run lint
-npm run build     # next build, then serwist build → public/sw.js
+npm test          # unit tests for the domain and the store
+npm run test:e2e  # Playwright, starts its own dev server
+npm run typecheck && npm run lint
+npm run build
 ```
 
-## Self-host on Vercel
+To regenerate the screenshots and the banner on this page:
+
+```bash
+README_SHOTS=1 npx playwright test e2e/readme-shots.spec.ts
+```
+
+</details>
+
+## Run your own
+
+<details>
+<summary><b>Self-host on Vercel in seven steps</b></summary>
+<br />
 
 1. Fork this repo and import it into Vercel.
-2. **Database.** Add Neon from the Vercel Marketplace, or point `DATABASE_URL` at any Postgres. Run `npm run db:migrate` once against it (or `npx drizzle-kit migrate`).
-3. **Google sign-in.** In Google Cloud Console create an OAuth client of type Web. Add `https://<your-domain>/api/auth/callback/google` as an authorised redirect URI (and `http://localhost:3000/api/auth/callback/google` for local dev). Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
-4. **Auth secret.** `BETTER_AUTH_SECRET` from `openssl rand -base64 32`, and `BETTER_AUTH_URL` set to your public origin with no trailing slash.
-5. **Push.** `npx web-push generate-vapid-keys`, then set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` and `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (same value as the public key).
-6. **Reminder scheduler.** Set `REMINDER_DISPATCH_SECRET`. Then schedule a POST to `https://<your-domain>/api/reminders/dispatch` every 5 minutes with header `Authorization: Bearer <secret>`. Vercel's Hobby plan runs crons once a day, so use Upstash QStash from the Marketplace, or a Vercel cron on Pro. The endpoint is idempotent, so overlapping runs are safe.
-7. Deploy. Open the URL on your phone and add it to the Home Screen. On iPhone, reminders only work when installed.
+2. **Database.** Add Neon from the Vercel Marketplace, or point `DATABASE_URL` at any Postgres. Run `npm run db:migrate` once.
+3. **Google sign-in.** Create a Web OAuth client in Google Cloud Console. Add `https://<your-domain>/api/auth/callback/google` as a redirect URI. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+4. **Auth secret.** Set `BETTER_AUTH_SECRET` from `openssl rand -base64 32`. Set `BETTER_AUTH_URL` to your public origin with no trailing slash.
+5. **Push.** Run `npx web-push generate-vapid-keys`. Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, and `NEXT_PUBLIC_VAPID_PUBLIC_KEY` with the same value as the public key.
+6. **Reminders.** Set `REMINDER_DISPATCH_SECRET`. Schedule a POST to `https://<your-domain>/api/reminders/dispatch` every 5 minutes with the header `Authorization: Bearer <secret>`. Upstash QStash from the Marketplace does this on the free plan.
+7. Deploy, open it on your phone, and add it to your Home Screen.
 
-All variables are listed in `.env.example`.
+Every variable is listed in `.env.example`.
 
-## Data model in one paragraph
+</details>
 
-Seven event types: `debt.set_initial`, `debt.adjust`, `qada.logged`, `daily.resolved` (on time, late, missed, exempt), `strategy.started`, `strategy.stopped`, `event.revoked`. Events carry a client-generated UUID, so sync is a set union: the client pushes its outbox, the server inserts with `ON CONFLICT DO NOTHING` and assigns a monotonic `server_seq`, the client pulls everything after its cursor. The reducer sorts by `(occurredAt, id)` so every device reaches the same state.
+The full specification, with every decision and every deviation, is in [`docs/specs/2026-09-19-qadaos-v1.md`](docs/specs/2026-09-19-qadaos-v1.md).
 
-## Privacy
+## Contributing
 
-Prayer data is sensitive. The hosted instance stores only what the ledger needs, never sells or shares it, has no analytics, and deletes everything immediately on request. See `/privacy` in the app.
-
-## Spec
-
-The full specification, decisions and deviations live in `docs/specs/2026-09-19-qadaos-v1.md`.
+Issues and pull requests are welcome. Read [`CLAUDE.md`](CLAUDE.md) first. It holds the rules the codebase keeps: events are never edited, the screens never compute, and there are no streaks.
 
 ## License
 
-MIT.
+[MIT](LICENSE). Use it, fork it, host it for your community.
