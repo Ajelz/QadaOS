@@ -15,6 +15,7 @@ import type { SettingsDoc } from "@/domain/schemas";
 import { FARD_PRAYERS, PRAYER_LABEL, type Prayer } from "@/domain/types";
 import { addPasskey, signOut, useSession } from "@/lib/auth-client";
 import { fmtInt } from "@/lib/format";
+import { exportCsv, exportJson } from "@/lib/exportClient";
 import { disablePush, enablePush, isIosNotInstalled, pushSupported } from "@/lib/pushClient";
 import { useClientValue } from "@/lib/useClientValue";
 import { getDb } from "@/store/db";
@@ -52,7 +53,7 @@ function Row({ label, children, hint, stacked = false }: { label: string; childr
 export function SettingsScreen() {
   const { settings } = useSettings();
   const { patch } = useSettingsActions();
-  const { state } = useLedger();
+  const { state, events } = useLedger();
   const { append, revoke } = useLedgerActions();
   const { data: session } = useSession();
   const sync = useSyncState();
@@ -62,7 +63,7 @@ export function SettingsScreen() {
   const [confirm, setConfirm] = useState("");
   const [leaving, setLeaving] = useState(false);
   const [adjust, setAdjust] = useState<Prayer | null>(null);
-  const [delta, setDelta] = useState("");
+  const [target, setTarget] = useState("");
   const [note, setNote] = useState("");
   const prayers: Prayer[] = settings.prayer.trackWitr ? [...FARD_PRAYERS, "witr"] : [...FARD_PRAYERS];
   const canPush = useClientValue(pushSupported, false);
@@ -103,14 +104,22 @@ export function SettingsScreen() {
     toast({ message: on ? "Witr is now tracked. Set how many you owe under Debt below." : "Witr is no longer tracked. Your Witr entries are kept.", durationMs: 6000 });
   }
 
+  async function setIshaEnd(v: "fajr" | "midnight") {
+    await setPrayer({ ishaEnd: v });
+    toast({ message: v === "midnight" ? "Isha now closes at midnight. Any pending prayers were recalculated." : "Isha now stays open until Fajr. Any pending prayers were recalculated.", durationMs: 6000 });
+  }
+
+  // People know what they owe, not the difference, so the sheet asks for the new total.
+  const current = adjust ? Math.max(0, state.debt[adjust]) : 0;
+  const n = target.trim() === "" ? 0 : Math.trunc(Number(target)) - current;
+
   async function saveAdjust() {
     if (!adjust) return;
-    const n = Math.trunc(Number(delta));
     if (!n) return;
     const e = await append({ type: "debt.adjust", payload: { v: 1, prayer: adjust, delta: n, note: note.trim() || undefined } });
     toast({ message: `${PRAYER_LABEL[adjust]} adjusted by ${n > 0 ? "+" : "−"}${fmtInt(Math.abs(n))}.`, tone: "teal", action: { label: "Undo", onClick: () => revoke(e.id) } });
     setAdjust(null);
-    setDelta("");
+    setTarget("");
     setNote("");
   }
 
@@ -130,14 +139,12 @@ export function SettingsScreen() {
     router.replace("/sign-in");
   }
 
-  const n = Math.trunc(Number(delta));
-
   return (
     <>
       <header className="mb-3 flex items-center gap-3">
-        <Link href="/" aria-label="Back to Today" className="brut-sm pressable grid h-11 w-11 shrink-0 place-items-center rounded-[var(--r-sm)] min-[900px]:hidden">
+        <button type="button" aria-label="Back" onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))} className="brut-sm pressable grid h-11 w-11 shrink-0 place-items-center rounded-[var(--r-sm)] min-[900px]:hidden">
           <Icon name="back" />
-        </Link>
+        </button>
         <h1 className="display text-[28px]">Settings</h1>
         <Sticker kind="square" tone="coral" size={16} rotate={12} inline />
       </header>
@@ -181,8 +188,8 @@ export function SettingsScreen() {
               <option value="hanafi">Hanafi</option>
             </select>
           </Row>
-          <Row label="Isha ends" hint="When an unanswered Isha becomes pending.">
-            <select aria-label="Isha ends" value={settings.prayer.ishaEnd} onChange={(e) => setPrayer({ ishaEnd: e.target.value as "fajr" | "midnight" })}>
+          <Row label="Isha ends" hint="Changes which prayers become pending at night.">
+            <select aria-label="Isha ends" value={settings.prayer.ishaEnd} onChange={(e) => setIshaEnd(e.target.value as "fajr" | "midnight")}>
               <option value="fajr">At Fajr</option>
               <option value="midnight">At midnight</option>
             </select>
@@ -231,7 +238,15 @@ export function SettingsScreen() {
         <SectionCard title="Debt">
           {prayers.map((p) => (
             <Row key={p} label={PRAYER_LABEL[p]} hint={`${fmtInt(Math.max(0, state.debt[p]))} owed. Started at ${fmtInt(state.initial[p])}.`}>
-              <Button size="sm" variant="flat" aria-label={`Adjust ${PRAYER_LABEL[p]}`} onClick={() => setAdjust(p)}>
+              <Button
+                size="sm"
+                variant="flat"
+                aria-label={`Adjust ${PRAYER_LABEL[p]}`}
+                onClick={() => {
+                  setTarget(String(Math.max(0, state.debt[p])));
+                  setAdjust(p);
+                }}
+              >
                 Adjust
               </Button>
             </Row>
@@ -252,12 +267,29 @@ export function SettingsScreen() {
         </SectionCard>
 
         <SectionCard title="Your data" tone="pink">
-          <Row label="Export everything" hint="One file with every entry and setting.">
-            <a href="/api/account/export" className={buttonClass({ size: "sm" })} download>
+          <Row label="Export everything" hint="Every entry and setting, as JSON. Works offline.">
+            <Button
+              size="sm"
+              onClick={() => {
+                exportJson(events, settings);
+                toast({ message: "Export saved to your downloads.", tone: "teal" });
+              }}
+            >
               Export
-            </a>
+            </Button>
           </Row>
-          <Row label="Delete account" hint="Removes everything, immediately and for good.">
+          <Row label="Daily totals" hint="One row per day, as a spreadsheet file (CSV).">
+            <Button
+              size="sm"
+              onClick={() => {
+                exportCsv(events);
+                toast({ message: "Daily totals saved to your downloads.", tone: "teal" });
+              }}
+            >
+              Export
+            </Button>
+          </Row>
+          <Row label="Delete account" hint="Removes everything from the server and this device. Export first if you want a copy.">
             <Button size="sm" tone="rust" onClick={() => setDeleting(true)}>
               Delete
             </Button>
@@ -285,14 +317,14 @@ export function SettingsScreen() {
         title={adjust ? `Adjust ${PRAYER_LABEL[adjust]}` : ""}
         footer={
           <Button block tone="coral" size="lg" disabled={!n} onClick={saveAdjust}>
-            {n ? `${n > 0 ? "Add" : "Remove"} ${fmtInt(Math.abs(n))}` : "Enter a number"}
+            {n ? `Set to ${fmtInt(current + n)} (${n > 0 ? "+" : "−"}${fmtInt(Math.abs(n))})` : "No change"}
           </Button>
         }
       >
-        {adjust && <p className="mb-3 text-[13px] font-semibold text-mute">You owe {fmtInt(Math.max(0, state.debt[adjust]))} now. Use this when you recount your estimate.</p>}
+        {adjust && <p className="mb-3 text-[13px] font-semibold text-mute">You owe {fmtInt(current)} {PRAYER_LABEL[adjust]} now. If you have recounted, enter what you actually owe. The difference is added to your log and can be undone.</p>}
         <label className="mb-3 flex flex-col gap-1.5">
-          <span className="text-[13px] font-black">Change</span>
-          <input id="adjust-delta" className="num w-full" inputMode="numeric" placeholder="200, or -50 to reduce" value={delta} onChange={(e) => setDelta(e.target.value.replace(/[^\d-]/g, ""))} />
+          <span className="text-[13px] font-black">What you owe</span>
+          <input id="adjust-target" className="num w-full" inputMode="numeric" value={target} onChange={(e) => setTarget(e.target.value.replace(/[^\d]/g, "").slice(0, 6))} onFocus={(e) => e.target.select()} />
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-black">Note, if you like</span>

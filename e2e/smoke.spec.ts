@@ -30,10 +30,12 @@ test("onboarding writes the ledger and lands on Today", async () => {
   await expect(page.getByText("Step 1 of 5: Where you pray")).toBeVisible();
   await shot("01-onboarding-where");
 
-  await page.getByRole("button", { name: "Skip for now" }).click();
+  await page.getByRole("button", { name: "Set this later" }).click();
   await shot("02-onboarding-how");
   await page.getByRole("button", { name: "Next", exact: true }).click();
-  for (const p of ["fajr", "dhuhr", "asr", "maghrib", "isha"]) await page.locator(`#debt-${p}`).fill("4000");
+  // One field fills all five.
+  await page.locator("#debt-same").fill("4000");
+  await expect(page.locator("#debt-isha")).toHaveValue("4000");
   await expect(page.getByText("20,000 prayers")).toBeVisible();
   await shot("03-onboarding-owed");
   await page.getByRole("button", { name: "Next", exact: true }).click();
@@ -62,7 +64,7 @@ test("the onboarding draft survives a reload", async ({ browser }) => {
   const ctx = await browser.newContext(device);
   const p = await ctx.newPage();
   await p.goto("/onboarding");
-  await p.getByRole("button", { name: "Skip for now" }).click();
+  await p.getByRole("button", { name: "Set this later" }).click();
   await p.getByRole("button", { name: "Next", exact: true }).click();
   await p.locator("#debt-fajr").fill("1234");
   await p.reload();
@@ -74,7 +76,8 @@ test("the onboarding draft survives a reload", async ({ browser }) => {
 test("logging qada updates the debt and can be undone", async () => {
   await page.getByRole("button", { name: "Log qada" }).first().click();
   await expect(page.getByRole("dialog", { name: "Log qada" })).toBeVisible();
-  await page.getByRole("button", { name: "Five more" }).click();
+  await page.getByRole("button", { name: "Set to 5" }).click();
+  await page.getByRole("button", { name: "One more" }).click();
   await shot("07-log-sheet");
   await page.getByRole("button", { name: /^Log 6 Fajr$/ }).click();
   await expect(page.getByText("19,994", { exact: true })).toBeVisible();

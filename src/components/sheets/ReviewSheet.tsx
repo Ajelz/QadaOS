@@ -44,6 +44,11 @@ export function ReviewSheet({ open, onClose, prayers, prayerDay, state }: { open
       }
     >
       <p className="mb-3 text-[13px] font-semibold text-mute">One tap per prayer. Late still counts as prayed. Only missed adds to what you owe.</p>
+      {prayers.length > 1 && (
+        <Button block variant="flat" className="mb-4" onClick={() => prayers.forEach((p) => void answer(p, "on_time"))}>
+          I prayed all {prayers.length} on time
+        </Button>
+      )}
       <div className="flex flex-col gap-3">
         {prayers.map((p) => {
           const current = state.resolutions[resolutionKey(prayerDay, p)]?.status;

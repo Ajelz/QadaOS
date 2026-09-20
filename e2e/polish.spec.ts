@@ -23,6 +23,7 @@ async function seeded(browser: Browser, viewport: { width: number; height: numbe
   await page.getByRole("button", { name: "Next", exact: true }).click();
   const prayers = ["fajr", "dhuhr", "asr", "maghrib", "isha", ...(opts.witr ? ["witr"] : [])];
   for (const p of prayers) await page.locator(`#debt-${p}`).fill("99999");
+  void prayers;
   await page.getByRole("button", { name: "Next", exact: true }).click();
   await page.getByRole("radio", { name: /Fajr first/ }).click();
   await page.getByRole("button", { name: "Next", exact: true }).click();
@@ -125,4 +126,52 @@ test("desktop shows a side rail instead of a floating tab bar", async ({ browser
   await page.goto("/stats");
   await page.screenshot({ path: `${SHOTS}/31-desktop-stats.png` });
   await page.context().close();
+});
+
+test("a prayer whose window has not opened cannot be answered", async ({ browser }) => {
+  const page = await seeded(browser, { width: 390, height: 844 });
+  // 16:30: Asr is open, Maghrib and Isha are still ahead.
+  const isha = page.getByLabel(/^Isha, starts at .* not open yet$/);
+  await expect(isha).toBeVisible();
+  expect(await isha.evaluate((el) => el.tagName)).toBe("DIV");
+  // The open prayer shows how long is left, and can be answered.
+  await expect(page.getByRole("button", { name: /^Asr, open now, .* left$/ })).toBeVisible();
+  await page.context().close();
+});
+
+test("without prayer times the resolve sheet does not ask on time versus late", async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await ctx.newPage();
+  await page.goto("/onboarding");
+  await page.getByRole("button", { name: "Set this later" }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+
+  // The estimate refuses a reversed range instead of reporting zero.
+  await page.getByRole("button", { name: "Estimate from dates" }).click();
+  await page.locator("#w-start").fill("2020-01-01");
+  await page.locator("#w-end").fill("2010-01-01");
+  await expect(page.getByText("The second date has to come after the first.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Use this estimate" })).toBeDisabled();
+  await page.locator("#w-end").fill("2022-01-01");
+  await page.getByRole("button", { name: "Use this estimate" }).click();
+  await expect(page.locator("#debt-fajr")).toHaveValue("731");
+  await expect(page.getByText(/is a number, not a verdict/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("button", { name: /^Finish( without reminders)?$/ }).click();
+  await expect(page.getByText("Prayers owed")).toBeVisible();
+
+  await page.getByRole("button", { name: /^Fajr, not answered yet$/ }).click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByRole("button", { name: "Prayed", exact: true })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Prayed late" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // Setup cannot silently overwrite an existing ledger.
+  await page.goto("/onboarding");
+  await expect(page.getByRole("heading", { name: "Set up again?" })).toBeVisible();
+  await page.getByRole("button", { name: "Keep my ledger as it is" }).click();
+  await expect(page).toHaveURL("http://localhost:3100/");
+  await ctx.close();
 });

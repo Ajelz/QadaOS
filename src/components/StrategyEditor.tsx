@@ -84,6 +84,7 @@ function Editor({ initial, prayers, isEdit, onSave, onClose }: { initial: Strate
       }
     >
       <div className="flex flex-col gap-5">
+        {isEdit && <p className="rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-violet px-3 py-2 text-[13px] font-bold">Saving closes the current period and starts a new one, so each version of your plan keeps its own report. Nothing you have logged changes.</p>}
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-black">Plan name</span>
           <input id="strategy-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} className="w-full" />
@@ -107,7 +108,7 @@ function Editor({ initial, prayers, isEdit, onSave, onClose }: { initial: Strate
                 )}
                 <div className="flex flex-wrap items-center gap-2 text-[15px] font-bold">
                   <span>Make up</span>
-                  <input type="number" inputMode="numeric" min={1} max={999} aria-label="How many" className="w-[76px]" value={r.count} onChange={(e) => update(i, { count: Math.min(999, Math.max(1, Math.trunc(Number(e.target.value)) || 1)) })} />
+                  <input type="number" inputMode="numeric" min={1} max={999} aria-label={`Rule ${i + 1}: how many`} className="w-[76px]" value={r.count} onChange={(e) => update(i, { count: Math.min(999, Math.max(1, Math.trunc(Number(e.target.value)) || 1)) })} />
                   {r.kind === "with_daily" && (
                     <>
                       <PrayerSelect label="Which prayer to make up" value={r.qada} onChange={(v) => update(i, { qada: v as Rule["qada"] })} prayers={prayers} extra={[{ value: "same", label: "of that same prayer" }, nextOption]} />
@@ -166,7 +167,6 @@ function Editor({ initial, prayers, isEdit, onSave, onClose }: { initial: Strate
           </section>
         )}
 
-        {isEdit && <p className="text-[13px] font-semibold text-mute">Saving closes the current period and starts a new one, so each version of your plan keeps its own report. Nothing you have logged changes.</p>}
       </div>
     </Sheet>
   );

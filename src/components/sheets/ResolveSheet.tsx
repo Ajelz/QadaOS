@@ -21,7 +21,7 @@ export const STATUS_BUTTON: Record<ResolutionStatus, string> = {
   exempt: "bg-grey",
 };
 
-export function ResolveSheet({ target, existing, onClose }: { target: { prayer: Prayer; prayerDay: PrayerDay } | null; existing?: Resolution; onClose: () => void }) {
+export function ResolveSheet({ target, existing, onClose, hasWindows = true }: { target: { prayer: Prayer; prayerDay: PrayerDay } | null; existing?: Resolution; onClose: () => void; hasWindows?: boolean }) {
   const { append, revoke } = useLedgerActions();
   const toast = useToast();
 
@@ -41,12 +41,19 @@ export function ResolveSheet({ target, existing, onClose }: { target: { prayer: 
     toast({ message: "Answer cleared." });
   }
 
-  const options: { status: ResolutionStatus; label: string }[] = [
-    { status: "on_time", label: "Prayed on time" },
-    { status: "late", label: "Prayed late" },
-    { status: "missed", label: "Missed" },
-    { status: "exempt", label: "Exempt" },
-  ];
+  // Without prayer times the app cannot tell on time from late, so it does not ask.
+  const options: { status: ResolutionStatus; label: string }[] = hasWindows
+    ? [
+        { status: "on_time", label: "Prayed on time" },
+        { status: "late", label: "Prayed late" },
+        { status: "missed", label: "Missed" },
+        { status: "exempt", label: "Exempt" },
+      ]
+    : [
+        { status: "on_time", label: "Prayed" },
+        { status: "missed", label: "Missed" },
+        { status: "exempt", label: "Exempt" },
+      ];
 
   return (
     <Sheet open={Boolean(target)} onClose={onClose} title={target ? `${PRAYER_LABEL[target.prayer]}, ${fmtDay(target.prayerDay)}` : ""}>
@@ -57,10 +64,10 @@ export function ResolveSheet({ target, existing, onClose }: { target: { prayer: 
           </Button>
         ))}
       </div>
-      <p className="mt-4 text-[13px] font-semibold text-mute">Late still counts as prayed. Missed adds one to what you owe. Exempt is for a day with no obligation, such as during menstruation.</p>
+      <p className="mt-4 text-[13px] font-semibold text-mute">Recording a miss is just a fact: it adds one to what you owe and nothing else changes.{hasWindows ? " Late still counts as prayed." : ""} Exempt is for a day with no obligation, such as during menstruation.</p>
       {existing && (
         <Button block variant="flat" className="mt-3" onClick={clear}>
-          Clear this answer
+          Make this pending again
         </Button>
       )}
     </Sheet>

@@ -6,6 +6,7 @@ import { LocationPicker } from "@/components/LocationPicker";
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
+import { Icon } from "@/components/ui/Icon";
 import { PageFoot, Sticker } from "@/components/ui/Sticker";
 import { useToast } from "@/components/ui/Toast";
 import { localDateString } from "@/domain/prayerDay";
@@ -15,7 +16,7 @@ import { FARD_PRAYERS, perPrayer, PRAYER_LABEL, type Prayer } from "@/domain/typ
 import { fmtInt, fmtMonth, fmtRelativeDays } from "@/lib/format";
 import { enablePush, isIosNotInstalled, pushSupported } from "@/lib/pushClient";
 import { useClientValue } from "@/lib/useClientValue";
-import { useLedgerActions, useSettings, useSettingsActions } from "@/store/hooks";
+import { useLedger, useLedgerActions, useSettings, useSettingsActions } from "@/store/hooks";
 
 const STEPS = ["Where you pray", "How you calculate", "What you owe", "Your plan", "Reminders"] as const;
 const DRAFT_KEY = "qadaos:onboarding-draft:v1";
@@ -48,7 +49,30 @@ function daysBetweenDates(a: string, b: string): number {
 export function OnboardingScreen() {
   const mounted = useClientValue(() => true, false);
   const { settings, ready } = useSettings();
-  if (!mounted || !ready) return <div aria-busy="true" className="min-h-[60vh]" />;
+  const { state, ready: ledgerReady } = useLedger();
+  const router = useRouter();
+  const [rerun, setRerun] = useState(false);
+  if (!mounted || !ready || !ledgerReady) return <div aria-busy="true" className="min-h-[60vh]" />;
+
+  // Running setup again would write a second starting balance over the first. Ask first.
+  const existing = Object.values(state.initial).reduce((a, b) => a + b, 0);
+  if (existing > 0 && !rerun) {
+    return (
+      <div className="my-auto flex flex-col gap-4">
+        <h1 className="display text-[28px]">Set up again?</h1>
+        <Card>
+          <p className="text-[15px] font-bold">You already have a starting balance of {fmtInt(existing)} prayers. Running setup again replaces it and starts a new plan. Everything you have logged stays in your ledger.</p>
+          <p className="mt-2 text-[13px] font-semibold text-mute">To correct a single number instead, use Adjust under Debt in Settings.</p>
+        </Card>
+        <Button block tone="coral" size="lg" onClick={() => router.replace("/")}>
+          Keep my ledger as it is
+        </Button>
+        <Button block variant="flat" onClick={() => setRerun(true)}>
+          Run setup again
+        </Button>
+      </div>
+    );
+  }
   return <Flow initialPrayer={settings.prayer} />;
 }
 
@@ -66,6 +90,7 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
   const [wStart, setWStart] = useState("");
   const [wEnd, setWEnd] = useState("");
   const [wExempt, setWExempt] = useState(0);
+  const [same, setSame] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Persist on every change so a reload, or a trip to another app, resumes where you were.
@@ -83,13 +108,30 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
   const today = localDateString(new Date(), prayer.location?.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
   const chosen = TEMPLATES.find((t) => t.id === template);
   const chosenFinish = chosen ? simulateFinish(counts, chosen.build(prayers), today) : undefined;
-  const wizardEstimate = wStart && wEnd ? Math.max(0, Math.round(daysBetweenDates(wStart, wEnd) - (daysBetweenDates(wStart, wEnd) / 30.44) * wExempt)) : null;
+  const wizardReversed = Boolean(wStart && wEnd && wEnd < wStart);
+  const wizardEstimate = wStart && wEnd && !wizardReversed ? Math.max(0, Math.round(daysBetweenDates(wStart, wEnd) - (daysBetweenDates(wStart, wEnd) / 30.44) * wExempt)) : null;
+  // Witr is not missed on the same basis as the five, so the estimate never fills it.
+  const fard = prayers.filter((p) => p !== "witr");
+  const wouldReplace = fard.some((p) => debt[p] !== "");
+
+  function fillAll(value: string) {
+    set({ debt: { ...debt, ...(Object.fromEntries(fard.map((p) => [p, value])) as Record<Prayer, string>) } });
+  }
 
   function applyWizard() {
     if (wizardEstimate === null) return;
-    set({ debt: { ...debt, ...(Object.fromEntries(prayers.map((p) => [p, String(wizardEstimate)])) as Record<Prayer, string>) } });
+    fillAll(String(wizardEstimate));
+    setSame(String(wizardEstimate));
     setWizard(false);
   }
+
+  const pushFailure: Record<string, string> = {
+    unsupported: "This browser cannot receive notifications.",
+    no_key: "Reminders are not set up on this server.",
+    denied: "Notifications are blocked for this site. Allow them in your browser settings, then turn reminders on in Settings.",
+    no_worker: "Reminders need one reload first. Turn them on in Settings.",
+    failed: "Reminders could not be turned on. Try again in Settings.",
+  };
 
   async function finish(withReminders: boolean) {
     setSaving(true);
@@ -100,7 +142,7 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
       if (withReminders) {
         const r = await enablePush();
         if (r.ok) await patch((d) => ({ ...d, reminders: { ...d.reminders, enabled: true, perPrayer: Object.fromEntries(prayers.map((p) => [p, true])) } }));
-        else toast({ message: "Reminders could not be turned on here. You can try again in Settings.", tone: "yellow", durationMs: 6000 });
+        else toast({ message: pushFailure[r.reason], tone: "yellow", durationMs: 8000 });
       }
       try {
         localStorage.removeItem(DRAFT_KEY);
@@ -118,6 +160,10 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
 
   return (
     <div className="flex flex-1 flex-col">
+      <h1 className="sr-only">Set up QadaOS</h1>
+      <div className="mb-3 w-fit rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-coral px-2 py-0.5" style={{ boxShadow: "var(--shadow-sm)" }} aria-hidden>
+        <span className="display text-[17px]">QadaOS</span>
+      </div>
       {/* Progress: pinned to the top, with the sticker in its own reserved space. */}
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
@@ -190,6 +236,22 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
             {!wizard ? (
               <>
                 <p className="mb-3 text-[13px] font-semibold text-mute">A rough number is fine. You can adjust it later and the change is kept in your log. Many people round up to be safe.</p>
+                <label className="mb-3 flex flex-col gap-1.5">
+                  <span className="text-[13px] font-black">Same number for each of the five</span>
+                  <input
+                    id="debt-same"
+                    className="num w-full"
+                    inputMode="numeric"
+                    placeholder="For example 4000"
+                    value={same}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/[^\d]/g, "").slice(0, 6);
+                      setSame(v);
+                      fillAll(v);
+                    }}
+                  />
+                  <span className="text-[13px] font-semibold text-mute">Most people missed whole days, so the five are usually equal. Edit any one below.</span>
+                </label>
                 <div className="grid grid-cols-2 gap-3">
                   {prayers.map((p) => (
                     <label key={p} className="flex min-w-0 flex-col gap-1.5">
@@ -209,6 +271,7 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
                     {fmtInt(total)} {total === 1 ? "prayer" : "prayers"}
                   </Chip>
                 </div>
+                {total >= 1000 && <p className="mt-3 rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-cream px-3 py-2 text-[13px] font-bold">{fmtInt(total)} is a number, not a verdict. The next step turns it into a few prayers a day.</p>}
               </>
             ) : (
               <div className="flex flex-col gap-4">
@@ -232,10 +295,15 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
                   </select>
                   <span className="text-[13px] font-semibold text-mute">For example during menstruation. Leave at none if this does not apply to you.</span>
                 </label>
+                {wizardReversed && (
+                  <p role="alert" className="rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-ink px-3 py-2 text-[13px] font-bold text-cream">
+                    The second date has to come after the first.
+                  </p>
+                )}
                 {wizardEstimate !== null && (
-                  <Chip tone="orange" className="num self-start text-[13px]">
-                    About {fmtInt(wizardEstimate)} of each prayer
-                  </Chip>
+                  <p className="rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-orange px-3 py-2 text-[13px] font-bold">
+                    About {fmtInt(wizardEstimate)} of each prayer, {fmtInt(wizardEstimate * fard.length)} in total.{wouldReplace ? " This replaces the numbers you typed for the five daily prayers." : ""}
+                  </p>
                 )}
                 <div className="flex gap-3">
                   <Button block onClick={() => setWizard(false)}>
@@ -253,7 +321,7 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
         {step === 3 && (
           <Card>
             <CardTitle className="mb-1 text-[20px]">Pick a starting plan</CardTitle>
-            <p className="mb-3 text-[13px] font-semibold text-mute">A plan sets your daily targets. Each date shows when you would finish if you met it every day. Switch plans whenever you like: your ledger never changes.</p>
+            <p className="mb-3 text-[13px] font-semibold text-mute">A plan turns what you owe into a few prayers a day. Each date shows when you would finish if you met it every day. Switch whenever you like: nothing you have logged changes.</p>
             <div className="flex flex-col gap-3" role="radiogroup" aria-label="Starting plan">
               {TEMPLATES.map((t) => {
                 const f = simulateFinish(counts, t.build(prayers), today);
@@ -261,7 +329,10 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
                 return (
                   <button key={t.id} type="button" role="radio" aria-checked={on} onClick={() => set({ template: t.id })} className={`pressable rounded-[var(--r-btn)] border-[length:var(--bw)] border-ink px-4 py-3 text-left ${on ? "bg-violet" : "bg-paper"}`} style={{ boxShadow: on ? "none" : "var(--shadow)", transform: on ? "translate(2px, 2px)" : undefined }}>
                     <div className="flex items-start justify-between gap-3">
-                      <span className="text-[15px] font-black">{t.name}</span>
+                      <span className="flex items-center gap-1.5 text-[15px] font-black">
+                        {on && <Icon name="check" size={16} strokeWidth={3.5} />}
+                        {t.name}
+                      </span>
                       {f && f.days > 0 && <Chip className="num">{fmtMonth(f.finishDay)}</Chip>}
                     </div>
                     <div className="mt-1 text-[13px] font-semibold">
@@ -324,11 +395,17 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
                 Back
               </Button>
             )}
-            {step < 4 && (
-              <Button block tone="coral" onClick={() => set({ step: step + 1 })}>
-                {step === 0 && !prayer.location ? "Skip for now" : "Next"}
-              </Button>
-            )}
+            {step < 4 &&
+              (step === 0 && !prayer.location ? (
+                // Skipping is allowed, but it is not the recommended path, so it is not the loud button.
+                <Button block variant="flat" onClick={() => set({ step: step + 1 })}>
+                  Set this later
+                </Button>
+              ) : (
+                <Button block tone="coral" onClick={() => set({ step: step + 1 })}>
+                  Next
+                </Button>
+              ))}
           </div>
         )}
       </div>

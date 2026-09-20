@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { emptyState, type LedgerState } from "./ledger";
-import { adherence, daysBetween, paceFinish, progressFor, simulateFinish, targetsFor, TEMPLATES } from "./strategy";
+import { adherence, dailyTotals, daysBetween, paceFinish, progressFor, simulateFinish, targetsFor, TEMPLATES, uncoveredPrayers } from "./strategy";
 import { perPrayer, type Prayer, type Strategy } from "./types";
 
 const ORDER: Prayer[] = ["fajr", "dhuhr", "asr", "maghrib", "isha"];
@@ -42,7 +42,8 @@ describe("targetsFor", () => {
     expect(t).toHaveLength(1);
     expect(t[0].prayer).toBe("asr");
     expect(t[0].count).toBe(3);
-    expect(t[0].label).toBe("Tonight");
+    // A block names the prayer it resolves to, so the target says what to actually pray.
+    expect(t[0].label).toBe("Tonight: 3 Asr");
   });
 
   test("a specific prayer target is kept only while that prayer has debt", () => {
@@ -169,5 +170,47 @@ describe("TEMPLATES", () => {
   test("every template resolves to at least one target on a full debt", () => {
     const debt = withDebt(perPrayer(() => 100));
     for (const t of TEMPLATES) expect(targetsFor(debt, t.build(ORDER)).length).toBeGreaterThan(0);
+  });
+});
+
+describe("uncoveredPrayers", () => {
+  test("lists prayers that carry debt but that no rule can ever reach", () => {
+    const s: Strategy = { strategyId: "x", name: "Fajr only", order: ["fajr"], rules: [{ kind: "with_daily", daily: "fajr", qada: "same", count: 2 }] };
+    expect(uncoveredPrayers(withDebt({ fajr: 10, witr: 5, dhuhr: 0 }), s)).toEqual(["witr"]);
+  });
+
+  test("next_in_order covers every prayer in the order, and only those", () => {
+    const s: Strategy = { strategyId: "x", name: "Quota", order: ["fajr", "dhuhr"], rules: [{ kind: "daily_quota", qada: "next_in_order", count: 5 }] };
+    expect(uncoveredPrayers(withDebt({ fajr: 1, dhuhr: 1, witr: 3 }), s)).toEqual(["witr"]);
+  });
+
+  test("is empty when everything owed is covered", () => {
+    expect(uncoveredPrayers(withDebt({ fajr: 1, isha: 1 }), oneWithEach)).toEqual([]);
+  });
+});
+
+describe("dailyTotals", () => {
+  test("gives what was owed at the end of each day that had activity, oldest first", () => {
+    const events = [
+      { id: "1", type: "debt.set_initial", occurredAt: "2026-09-01T08:00:00.000Z", tz: "UTC", deviceId: "d", payload: { v: 1, prayer: "fajr", count: 100 } },
+      { id: "2", type: "qada.logged", occurredAt: "2026-09-01T09:00:00.000Z", tz: "UTC", deviceId: "d", payload: { v: 1, prayer: "fajr", count: 4, prayerDay: "2026-09-01" } },
+      { id: "3", type: "daily.resolved", occurredAt: "2026-09-03T09:00:00.000Z", tz: "UTC", deviceId: "d", payload: { v: 1, prayer: "asr", prayerDay: "2026-09-03", status: "missed" } },
+      { id: "4", type: "qada.logged", occurredAt: "2026-09-03T10:00:00.000Z", tz: "UTC", deviceId: "d", payload: { v: 1, prayer: "fajr", count: 10, prayerDay: "2026-09-03" } },
+    ] as never;
+    expect(dailyTotals(events)).toEqual([
+      { day: "2026-09-01", owed: 96, qada: 4, missed: 0 },
+      { day: "2026-09-03", owed: 87, qada: 10, missed: 1 },
+    ]);
+  });
+
+  test("a backdated log lands on the day it was credited to", () => {
+    const events = [
+      { id: "1", type: "debt.set_initial", occurredAt: "2026-09-01T08:00:00.000Z", tz: "UTC", deviceId: "d", payload: { v: 1, prayer: "fajr", count: 50 } },
+      { id: "2", type: "qada.logged", occurredAt: "2026-09-05T09:00:00.000Z", tz: "UTC", deviceId: "d", payload: { v: 1, prayer: "fajr", count: 5, prayerDay: "2026-09-02" } },
+    ] as never;
+    expect(dailyTotals(events).map((d) => [d.day, d.owed])).toEqual([
+      ["2026-09-01", 50],
+      ["2026-09-02", 45],
+    ]);
   });
 });

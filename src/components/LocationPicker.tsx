@@ -44,7 +44,7 @@ export function LocationPicker({ value, onChange }: { value?: Location; onChange
     try {
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(query)}`, { headers: { accept: "application/json" } });
       const rows = (await res.json()) as { display_name: string; lat: string; lon: string }[];
-      setResults(rows.map((r) => ({ label: r.display_name.split(",").slice(0, 2).join(",").trim(), lat: Number(r.lat), lng: Number(r.lon) })));
+      setResults(rows.map((r) => ({ label: r.display_name.split(",").slice(0, 3).join(",").trim(), lat: Number(r.lat), lng: Number(r.lon) })));
       if (rows.length === 0) setError("No place matched. Try a larger city nearby.");
     } catch {
       setError("Search needs a connection. Use your location or enter coordinates.");
@@ -90,7 +90,7 @@ export function LocationPicker({ value, onChange }: { value?: Location; onChange
         </Button>
       </form>
       {results.length > 0 && (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2" aria-label={`${results.length} ${results.length === 1 ? "place" : "places"} found`}>
           {results.map((r) => (
             <li key={`${r.lat},${r.lng}`}>
               <button

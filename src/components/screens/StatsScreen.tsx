@@ -7,7 +7,7 @@ import { Card, CardTitle } from "@/components/ui/Card";
 import { Segmented } from "@/components/ui/Segmented";
 import { PageFoot, Sticker } from "@/components/ui/Sticker";
 import { localDateString, shiftDay } from "@/domain/prayerDay";
-import { daysBetween, paceFinish, simulateFinish } from "@/domain/strategy";
+import { dailyTargetCount, daysBetween, paceFinish, simulateFinish } from "@/domain/strategy";
 import { PRAYER_LABEL, RAKAH, type Prayer } from "@/domain/types";
 import { fmtDay, fmtInt } from "@/lib/format";
 import { useLedger, useSettings, useSettingsActions } from "@/store/hooks";
@@ -147,7 +147,7 @@ export function StatsScreen() {
             {total7 > 0 && <p className="mt-2 text-[11px] font-semibold text-mute">Yellow is today.{anyMissed ? " A dot marks a day with a missed daily prayer." : ""}</p>}
           </Card>
 
-          <PaceCards planFinish={planFinish} hasPlan={Boolean(state.activeStrategy)} pace={pace} />
+          <PaceCards planFinish={planFinish} hasPlan={Boolean(state.activeStrategy)} perDay={state.activeStrategy ? dailyTargetCount(state, state.activeStrategy) : undefined} pace={pace} historyDays={series.length ? daysBetween(series[0].day, today).length : 0} />
 
           <Card>
             <CardTitle className="mb-2.5">What you owe over time</CardTitle>

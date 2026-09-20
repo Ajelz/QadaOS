@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { PageFoot, Sticker } from "@/components/ui/Sticker";
 import { useToast } from "@/components/ui/Toast";
 import { resolutionKey } from "@/domain/ledger";
+import { localDateString } from "@/domain/prayerDay";
 import { progressFor } from "@/domain/strategy";
 import { PRAYER_LABEL, type Prayer } from "@/domain/types";
 import { fmtDay, fmtHijri, fmtInt, fmtTimeShort } from "@/lib/format";
@@ -47,6 +48,12 @@ export function TodayScreen() {
   const current = schedule.current;
   const currentResolved = current ? state.resolutions[resolutionKey(schedule.prayerDay, current.prayer)] : undefined;
   const hijri = fmtHijri(schedule.prayerDay, settings.display.hijriOffsetDays);
+  // Before Fajr the wall clock says tomorrow while the prayer day is still yesterday. Say so.
+  const civilDay = localDateString(now, tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const beforeFajr = hasWindows && civilDay !== schedule.prayerDay;
+  const minutesLeft = current ? Math.max(0, Math.round((current.end.getTime() - now.getTime()) / 60_000)) : 0;
+  // Kept short for the tile; the accessible name adds the word "left".
+  const leftLabel = current ? (minutesLeft >= 60 ? `${Math.floor(minutesLeft / 60)}h ${minutesLeft % 60}m` : `${minutesLeft}m left`) : undefined;
 
   function tileState(p: Prayer): TileState {
     const r = state.resolutions[resolutionKey(schedule.prayerDay, p)];
@@ -107,6 +114,15 @@ export function TodayScreen() {
           <>
             {fmtDay(schedule.prayerDay)}
             {hijri && <span className="whitespace-nowrap"> · {hijri}</span>}
+            {settings.prayer.location && (
+              <>
+                {" · "}
+                <Link href="/settings" className="whitespace-nowrap underline">
+                  {settings.prayer.location.label ?? "Prayer times"}
+                </Link>
+              </>
+            )}
+            {beforeFajr && <span className="mt-0.5 block font-bold text-ink">It is past midnight, but this prayer day runs until Fajr.</span>}
           </>
         }
       />
@@ -133,11 +149,11 @@ export function TodayScreen() {
                 <div className="display num text-[clamp(34px,13vw,54px)]">{fmtInt(owed)}</div>
               </div>
               <div className="flex shrink-0 flex-col items-start gap-1 min-[360px]:items-end">
-                <Chip tone={net < 0 ? "teal" : net === 0 ? "paper" : "grey"} className="num" aria-label={`Net change since you started: ${net > 0 ? "up" : net < 0 ? "down" : "no change"} ${fmtInt(Math.abs(net))}`}>
+                {net !== 0 && <Chip tone={net < 0 ? "teal" : "grey"} className="num" aria-label={`Net change since you started: ${net > 0 ? "up" : net < 0 ? "down" : "no change"} ${fmtInt(Math.abs(net))}`}>
                   {net === 0 ? "" : net < 0 ? "−" : "+"}
-                  {fmtInt(Math.abs(net))} net
-                </Chip>
-                {firstEvent && <span className="whitespace-nowrap text-[11px] font-semibold text-mute">since {fmtDay(firstEvent)}</span>}
+                  {fmtInt(Math.abs(net))} {net < 0 ? "fewer" : "more"}
+                </Chip>}
+                {firstEvent && <span className="whitespace-nowrap text-[11px] font-semibold text-mute">{net !== 0 ? "than when you started, " : "started "}{fmtDay(firstEvent)}</span>}
               </div>
             </div>
             {buffer > 0 && <p className="mt-2 text-[13px] font-bold">Plus {fmtInt(buffer)} extra, past your estimate. A buffer is a good thing.</p>}
@@ -173,7 +189,9 @@ export function TodayScreen() {
           <div className={`grid gap-2 ${dense ? "grid-cols-3 min-[360px]:grid-cols-6" : "grid-cols-5"}`}>
             {prayers.map((p) => {
               const w = schedule.windows.find((x) => x.prayer === p);
-              return <PrayerTile key={p} prayer={p} state={tileState(p)} dense={dense} time={w ? fmtTimeShort(w.start, tz) : undefined} onClick={() => setResolving(p)} />;
+              const st = tileState(p);
+              // A prayer whose window has not opened cannot be answered yet.
+              return <PrayerTile key={p} prayer={p} state={st} dense={dense} time={w ? fmtTimeShort(w.start, tz) : undefined} note={st === "now" ? leftLabel : undefined} onClick={st === "upcoming" ? undefined : () => setResolving(p)} />;
             })}
           </div>
           {pending.length > 1 ? (
@@ -283,9 +301,10 @@ export function TodayScreen() {
         target={resolving ? { prayer: resolving, prayerDay: schedule.prayerDay } : null}
         existing={resolving ? state.resolutions[resolutionKey(schedule.prayerDay, resolving)] : undefined}
         onClose={() => setResolving(null)}
+        hasWindows={hasWindows}
       />
       <ReviewSheet open={Boolean(reviewing)} onClose={() => setReviewing(null)} prayers={reviewing ?? []} prayerDay={schedule.prayerDay} state={state} />
-      <QuickLogSheet open={logOpen} onClose={() => setLogOpen(false)} prayers={prayers} today={schedule.prayerDay} defaultPrayer={progress?.targets.find((t) => t.done < t.count)?.prayer} />
+      <QuickLogSheet open={logOpen} onClose={() => setLogOpen(false)} prayers={prayers} today={schedule.prayerDay} owed={state.debt} defaultPrayer={progress?.targets.find((t) => t.done < t.count)?.prayer} />
     </>
   );
 }

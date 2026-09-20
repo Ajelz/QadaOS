@@ -3,9 +3,9 @@
  * period, and two projections (plan pace, actual pace). Pure; no I/O.
  */
 
-import type { LedgerState } from "./ledger";
-import { shiftDay } from "./prayerDay";
-import { FARD_PRAYERS, type PerPrayer, type Prayer, type PrayerDay, type Rule, type Strategy } from "./types";
+import { reduce, resolutionKey, type LedgerEvent, type LedgerState } from "./ledger";
+import { localDateString, shiftDay } from "./prayerDay";
+import { FARD_PRAYERS, PRAYERS, type PerPrayer, type Prayer, type PrayerDay, type Rule, type Strategy } from "./types";
 
 export interface Target {
   ruleIndex: number;
@@ -39,7 +39,8 @@ function describe(rule: Rule, prayer: Prayer): string {
       return `${rule.count} ${name} with ${daily}`;
     }
     case "block":
-      return rule.label;
+      // Name the prayer the block resolves to, so the target says what to actually pray.
+      return `${rule.label}: ${rule.count} ${name}`;
     case "daily_quota":
       return `${rule.count} ${name} today`;
   }
@@ -153,6 +154,72 @@ export function paceFinish(state: Pick<LedgerState, "debt" | "qadaByDay" | "reso
   return { netPerDay, qadaPerDay, missedPerDay, daysToFinish, finishDay: shiftDay(today, daysToFinish) };
 }
 
+/** Prayers that carry debt but that no rule in the strategy can ever reach (for example Witr under a five-prayer plan). */
+export function uncoveredPrayers(state: Pick<LedgerState, "debt">, strategy: Strategy): Prayer[] {
+  const covered = new Set<Prayer>();
+  for (const r of strategy.rules) {
+    if (r.qada === "same") {
+      if (r.kind === "with_daily") covered.add(r.daily);
+    } else if (r.qada === "next_in_order") {
+      for (const p of strategy.order) covered.add(p);
+    } else covered.add(r.qada);
+  }
+  return PRAYERS.filter((p) => state.debt[p] > 0 && !covered.has(p));
+}
+
+/** How many qada the strategy asks for today, across all its rules. */
+export function dailyTargetCount(state: Pick<LedgerState, "debt">, strategy: Strategy): number {
+  return targetsFor(state, strategy).reduce((s, t) => s + t.count, 0);
+}
+
+export interface DayTotal {
+  day: PrayerDay;
+  /** Total owed at the end of that day. */
+  owed: number;
+  qada: number;
+  missed: number;
+}
+
+/** One row per day that had activity, oldest first: the CSV export and the debt-over-time chart. */
+export function dailyTotals(events: readonly LedgerEvent[]): DayTotal[] {
+  const state = reduce(events);
+  const byDay = new Map<PrayerDay, { delta: number; qada: number; missed: number }>();
+  const bucket = (day: PrayerDay) => {
+    let b = byDay.get(day);
+    if (!b) byDay.set(day, (b = { delta: 0, qada: 0, missed: 0 }));
+    return b;
+  };
+  // Only the latest set_initial per prayer counts; earlier ones were replaced.
+  const lastInitial = new Map<Prayer, string>();
+  for (const e of state.events) if (e.type === "debt.set_initial") lastInitial.set(e.payload.prayer, e.id);
+
+  for (const e of state.events) {
+    if (e.type === "qada.logged") {
+      const b = bucket(e.payload.prayerDay);
+      b.delta -= e.payload.count;
+      b.qada += e.payload.count;
+    } else if (e.type === "daily.resolved") {
+      const winner = state.resolutions[resolutionKey(e.payload.prayerDay, e.payload.prayer)];
+      if (winner?.eventId !== e.id || e.payload.status !== "missed") continue;
+      const b = bucket(e.payload.prayerDay);
+      b.delta += 1;
+      b.missed += 1;
+    } else if (e.type === "debt.set_initial") {
+      if (lastInitial.get(e.payload.prayer) === e.id) bucket(localDateString(new Date(e.occurredAt), e.tz)).delta += e.payload.count;
+    } else if (e.type === "debt.adjust") {
+      bucket(localDateString(new Date(e.occurredAt), e.tz)).delta += e.payload.delta;
+    }
+  }
+
+  let owed = 0;
+  return [...byDay.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([day, b]) => {
+      owed += b.delta;
+      return { day, owed: Math.max(0, owed), qada: b.qada, missed: b.missed };
+    });
+}
+
 export interface Template {
   id: string;
   name: string;
@@ -191,7 +258,7 @@ export const TEMPLATES: Template[] = [
   {
     id: "full_day",
     name: "Full day",
-    description: "One complete missed day every night: one of each prayer.",
+    description: "One whole day made up each night: one of each prayer.",
     build: (order) => ({
       strategyId: newId(),
       name: "Full day",
@@ -202,7 +269,7 @@ export const TEMPLATES: Template[] = [
   {
     id: "daily_quota",
     name: "Daily quota",
-    description: "A fixed number every day of whatever is next in your order.",
+    description: "A fixed number every day, working down your order.",
     build: (order) => ({
       strategyId: newId(),
       name: "Daily quota",

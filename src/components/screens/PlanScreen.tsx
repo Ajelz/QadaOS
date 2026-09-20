@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { Sheet } from "@/components/ui/Sheet";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { PageFoot, Sticker } from "@/components/ui/Sticker";
 import { useToast } from "@/components/ui/Toast";
 import { localDateString, shiftDay } from "@/domain/prayerDay";
-import { adherence, daysBetween, paceFinish, progressFor, simulateFinish, TEMPLATES } from "@/domain/strategy";
+import { adherence, dailyTargetCount, daysBetween, paceFinish, progressFor, simulateFinish, TEMPLATES, uncoveredPrayers } from "@/domain/strategy";
 import { PRAYER_LABEL, type Prayer, type Rule, type Strategy } from "@/domain/types";
 import { fmtDay, fmtMonth, fmtRelativeDays } from "@/lib/format";
 import { useLedger, useLedgerActions, useSettings } from "@/store/hooks";
@@ -57,6 +58,9 @@ export function PlanScreen() {
   const planFinish = useMemo(() => (active ? simulateFinish(state.debt, active, today) : undefined), [active, state.debt, today]);
   const pace = useMemo(() => paceFinish(state, today, 30), [state, today]);
   const isEdit = Boolean(editing && active && editing.strategyId === active.strategyId);
+  const uncovered = active ? uncoveredPrayers(state, active) : [];
+  const firstDay = state.events[0] ? localDateString(new Date(state.events[0].occurredAt), tz) : today;
+  const historyDays = daysBetween(firstDay, today).length;
 
   async function start(s: Strategy) {
     const e = await append({ type: "strategy.started", payload: { v: 1, ...s, strategyId: crypto.randomUUID() } });
@@ -78,7 +82,13 @@ export function PlanScreen() {
       <Header title="Plan" sub="Daily targets, finish dates and history" sticker={<Sticker kind="star" tone="violet" size={22} rotate={12} inline />} />
 
       <div className="flex flex-col gap-3">
-        {!ready ? null : active ? (
+        {!ready ? (
+          <Card aria-busy="true">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="mt-3 h-10 w-full" />
+            <Skeleton className="mt-2 h-10 w-full" />
+          </Card>
+        ) : active ? (
           <Card tone="violet">
             <div className="mb-3 flex items-start justify-between gap-3">
               <CardTitle className="line-clamp-2 min-w-0 flex-1 text-[17px]">{active.name}</CardTitle>
@@ -105,6 +115,11 @@ export function PlanScreen() {
                 <OrderChips order={active.order} />
               </div>
             )}
+            {uncovered.length > 0 && (
+              <p className="mb-3 rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-paper px-3 py-2 text-[13px] font-bold">
+                {uncovered.map((p) => PRAYER_LABEL[p]).join(" and ")} {uncovered.length === 1 ? "is" : "are"} not covered by this plan, so {uncovered.length === 1 ? "it" : "they"} will not go down. Edit the plan to add a rule.
+              </p>
+            )}
             <div className="flex items-center gap-3">
               <Button className="flex-1" onClick={() => setEditing(active)}>
                 Edit
@@ -127,7 +142,7 @@ export function PlanScreen() {
           </Card>
         )}
 
-        <PaceCards planFinish={planFinish} hasPlan={Boolean(active)} pace={pace} />
+        <PaceCards planFinish={planFinish} hasPlan={Boolean(active)} perDay={active ? dailyTargetCount(state, active) : undefined} pace={pace} historyDays={historyDays} />
 
         <section className="mt-2">
           <h2 className="mb-2 text-[17px] font-black tracking-[-0.01em]">History</h2>
@@ -188,9 +203,9 @@ export function PlanScreen() {
               </button>
             );
           })}
-          <button type="button" onClick={() => setEditing({ strategyId: crypto.randomUUID(), name: "My plan", rules: [], order: prayers })} className="brut pressable rounded-[var(--r-btn)] bg-violet px-4 py-3 text-left">
+          <button type="button" onClick={() => setEditing({ strategyId: crypto.randomUUID(), name: "My plan", rules: [{ kind: "with_daily", daily: "fajr", qada: "same", count: 2 }], order: prayers })} className="brut pressable rounded-[var(--r-btn)] bg-violet px-4 py-3 text-left">
             <div className="text-[15px] font-black">Build my own</div>
-            <div className="mt-1 text-[13px] font-semibold">Start from an empty plan and add your own rules.</div>
+            <div className="mt-1 text-[13px] font-semibold">Start from one example rule and shape it your way.</div>
           </button>
         </div>
       </Sheet>

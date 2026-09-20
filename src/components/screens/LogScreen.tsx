@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { IconButton } from "@/components/ui/IconButton";
 import { Sheet } from "@/components/ui/Sheet";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { PageFoot, Sticker } from "@/components/ui/Sticker";
 import { useToast } from "@/components/ui/Toast";
 import type { LedgerEvent } from "@/domain/ledger";
@@ -60,6 +61,8 @@ export function LogScreen() {
   const [confirming, setConfirming] = useState<LedgerEvent | null>(null);
   const [showUndone, setShowUndone] = useState(false);
   const [padOpen, setPadOpen] = useState(false);
+  // Years of entries: render a month at a time rather than the whole ledger.
+  const [shownDays, setShownDays] = useState(30);
 
   const groups = useMemo(() => {
     const byDay = new Map<string, LedgerEvent[]>();
@@ -133,14 +136,20 @@ export function LogScreen() {
         )}
       </div>
 
-      {!ready ? null : groups.length === 0 ? (
+      {!ready ? (
+        <Card aria-busy="true">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="mt-3 h-10 w-full" />
+          <Skeleton className="mt-2 h-10 w-full" />
+        </Card>
+      ) : groups.length === 0 ? (
         <Card tone="yellow">
           <CardTitle className="text-[17px]">Nothing logged yet</CardTitle>
           <p className="mt-1 text-[13px] font-semibold">Your first entry appears here. Everything can be undone, and anything undone can be restored.</p>
         </Card>
       ) : (
         <div className="flex flex-col gap-4">
-          {groups.map(([day, events]) => (
+          {groups.slice(0, shownDays).map(([day, events]) => (
             <section key={day} aria-label={fmtDay(day)}>
               <h2 className="ml-3 inline-block rounded-t-[var(--r-sm)] border-[length:var(--bw)] border-b-0 border-ink bg-ink px-2.5 py-1 text-[11px] font-black tracking-[0.04em] text-cream">{fmtDay(day).toUpperCase()}</h2>
               <Card padded={false}>
@@ -169,6 +178,12 @@ export function LogScreen() {
             </section>
           ))}
         </div>
+      )}
+
+      {groups.length > shownDays && (
+        <Button block variant="flat" className="mt-4" onClick={() => setShownDays((n) => n + 60)}>
+          Show older entries ({groups.length - shownDays} more days)
+        </Button>
       )}
 
       {state.undone.length > 0 && (
@@ -202,7 +217,7 @@ export function LogScreen() {
         <Sticker kind="star" tone="teal" size={20} rotate={-8} inline />
       </PageFoot>
 
-      <QuickLogSheet open={logOpen} onClose={() => setLogOpen(false)} prayers={prayers} today={schedule.prayerDay} defaultPrayer={preset} />
+      <QuickLogSheet open={logOpen} onClose={() => setLogOpen(false)} prayers={prayers} today={schedule.prayerDay} owed={state.debt} defaultPrayer={preset} />
 
       <Sheet
         open={Boolean(confirming)}

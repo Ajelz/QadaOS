@@ -19,16 +19,16 @@ const STATE: Record<TileState, { cls: string; sub: string; onColor: boolean }> =
 /** Only Maghrib is too wide for a narrow tile. */
 const SHORT: Partial<Record<Prayer, string>> = { maghrib: "Magh." };
 
-export function PrayerTile({ prayer, state, time, onClick, dense = false }: { prayer: Prayer; state: TileState; time?: string; onClick?: () => void; dense?: boolean }) {
+export function PrayerTile({ prayer, state, time, note, onClick, dense = false }: { prayer: Prayer; state: TileState; time?: string; note?: string; onClick?: () => void; dense?: boolean }) {
   const s = STATE[state];
   const Tag = onClick ? "button" : "div";
-  const sub = state === "upcoming" ? (time ?? "") : s.sub;
+  const sub = note ?? (state === "upcoming" ? (time ?? "") : s.sub);
   const short = SHORT[prayer];
   // Below the breakpoint the long name does not fit its tile, so the short form shows instead.
   // Full literal class names: Tailwind only generates classes it can see written out.
   const longCls = dense ? "max-[479px]:hidden" : "max-[419px]:hidden";
   const shortCls = dense ? "min-[480px]:hidden" : "min-[420px]:hidden";
-  const description = state === "plain" ? "not answered yet" : state === "upcoming" ? `upcoming${time ? ` at ${time}` : ""}` : state === "pending" ? "pending, needs an answer" : s.sub;
+  const description = state === "plain" ? "not answered yet" : state === "upcoming" ? `starts${time ? ` at ${time}` : " later"}, not open yet` : state === "now" ? `open now${note ? `, ${note.replace(/ left$/, "")} left` : ""}` : state === "pending" ? "pending, needs an answer" : s.sub;
 
   return (
     <Tag
