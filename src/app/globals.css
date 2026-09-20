@@ -70,20 +70,26 @@ body {
   overscroll-behavior-y: none;
 }
 
-/* Hard-edged object: every card, button, chip and tile starts here. */
-.brut {
-  border: var(--bw) solid var(--ink);
-  background: var(--paper);
-  box-shadow: var(--shadow);
-}
-.brut-sm {
-  border: 2px solid var(--ink);
-  background: var(--paper);
-  box-shadow: var(--shadow-sm);
-}
-.brut-flat {
-  border: var(--bw) solid var(--ink);
-  background: var(--paper);
+/*
+  In the components layer on purpose: Tailwind utilities (bg-coral, bg-yellow, ...) must be
+  able to override the default paper background. Unlayered CSS would always win.
+*/
+@layer components {
+  /* Hard-edged object: every card, button, chip and tile starts here. */
+  .brut {
+    border: var(--bw) solid var(--ink);
+    background: var(--paper);
+    box-shadow: var(--shadow);
+  }
+  .brut-sm {
+    border: 2px solid var(--ink);
+    background: var(--paper);
+    box-shadow: var(--shadow-sm);
+  }
+  .brut-flat {
+    border: var(--bw) solid var(--ink);
+    background: var(--paper);
+  }
 }
 
 /* Press feedback: the only motion in the app. */
