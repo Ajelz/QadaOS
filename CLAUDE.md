@@ -4,7 +4,7 @@ Prayer-debt ledger PWA. Read `docs/specs/2026-09-19-qadaos-v1.md` before changin
 
 ## Layout
 
-- `src/domain/` pure TypeScript, no React, no DB. `ledger.ts` (events + reducer), `prayerDay.ts` (adhan wrapper, Fajr-anchored days, windows, pending), `strategy.ts` (targets, progress, adherence, projections, templates), `reminders.ts` (due selection), `schemas.ts` (zod, shared by client and server), `types.ts`.
+- `src/domain/` pure TypeScript, no React, no DB. `ledger.ts` (events + reducer, reversible undo, `adjustments`), `prayerDay.ts` (adhan wrapper, Fajr-anchored days, windows, pending), `strategy.ts` (targets, progress, adherence, projections, templates, `uncoveredPrayers`, `dailyTotals`), `activity.ts` (7/30/90-day chart buckets), `estimate.ts` (date estimate and re-estimate deltas), `reminders.ts` (due selection), `schemas.ts` (zod, shared by client and server), `types.ts`.
 - `src/store/` client only. `db.ts` (Dexie), `ledger.ts` (append/revoke), `sync.ts` (outbox syncer, transport-injected), `syncManager.ts` (singleton + `useSyncState`), `settings.ts` (LWW doc), `hooks.ts` (`useLedger`, `useLedgerActions`, `useSettings`), `useSchedule.ts`.
 - `src/app/` App Router. `(app)/` tabs behind `AuthGate` + `TabBar`; `onboarding`, `sign-in`, `~offline`, `privacy`; `api/` route handlers; `sw.ts` service worker; `manifest.ts`.
 - `src/components/` `ui/` primitives (Card, Button, Chip, ProgressBar, PrayerTile, Sheet, Toast, Sticker, Skeleton), `screens/`, `sheets/`.

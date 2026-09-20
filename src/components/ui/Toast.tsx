@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 export interface ToastInput {
   message: string;
@@ -48,6 +48,38 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => ({ show }), [show]);
 
+  // Undo is the recovery path, so a keyboard user must be able to reach it before it goes.
+  // Only when the last input was the keyboard: touch and mouse users never lose their place.
+  const keyboard = useRef(false);
+  const actionRef = useRef<HTMLButtonElement>(null);
+  const returnTo = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Tab" || e.key === "Enter" || e.key === " ") keyboard.current = true;
+    };
+    const onPointer = () => (keyboard.current = false);
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("pointerdown", onPointer, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("pointerdown", onPointer, true);
+    };
+  }, []);
+  useEffect(() => {
+    if (!item?.action || !keyboard.current) return;
+    // After the frame in which a closing sheet hands focus back to its trigger.
+    const t = setTimeout(() => {
+      returnTo.current = document.activeElement as HTMLElement | null;
+      actionRef.current?.focus({ preventScroll: true });
+    }, 60);
+    return () => {
+      clearTimeout(t);
+      const back = returnTo.current;
+      returnTo.current = null;
+      if (back?.isConnected && document.activeElement === document.body) back.focus({ preventScroll: true });
+    };
+  }, [item]);
+
   return (
     <Ctx.Provider value={value}>
       {children}
@@ -57,6 +89,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <span className="min-w-0 flex-1 py-1.5">{item.message}</span>
             {item.action ? (
               <button
+                ref={actionRef}
                 type="button"
                 className="brut-sm pressable min-h-[44px] shrink-0 rounded-[var(--r-sm)] bg-paper px-3.5 text-[13px] font-black text-ink"
                 onClick={() => {

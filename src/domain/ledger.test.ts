@@ -235,3 +235,23 @@ describe("reduce: restoring an undone event", () => {
     expect(reduce([undo, init, redo, log]).debt.fajr).toBe(7);
   });
 });
+
+describe("reduce: adjustments", () => {
+  test("exposes the summed adjustments per prayer, so a re-estimate can be expressed as a difference", () => {
+    const state = reduce([
+      ev("debt.set_initial", { v: 1, prayer: "fajr", count: 100 }),
+      ev("debt.adjust", { v: 1, prayer: "fajr", delta: 40 }),
+      ev("debt.adjust", { v: 1, prayer: "fajr", delta: -10 }),
+      ev("debt.adjust", { v: 1, prayer: "isha", delta: 5 }),
+    ]);
+    expect(state.adjustments.fajr).toBe(30);
+    expect(state.adjustments.isha).toBe(5);
+    expect(state.adjustments.dhuhr).toBe(0);
+  });
+
+  test("a revoked adjustment is not counted", () => {
+    const adj = ev("debt.adjust", { v: 1, prayer: "fajr", delta: 40 });
+    const state = reduce([adj, ev("event.revoked", { v: 1, target: adj.id })]);
+    expect(state.adjustments.fajr).toBe(0);
+  });
+});

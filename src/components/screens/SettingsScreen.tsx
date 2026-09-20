@@ -3,14 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { EstimateWizard } from "@/components/EstimateWizard";
+import { Header } from "@/components/Header";
 import { LocationPicker } from "@/components/LocationPicker";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { SectionCard } from "@/components/ui/Card";
-import { Icon } from "@/components/ui/Icon";
 import { Sheet } from "@/components/ui/Sheet";
 import { PageFoot, Sticker } from "@/components/ui/Sticker";
 import { useToast } from "@/components/ui/Toast";
 import { Toggle } from "@/components/ui/Toggle";
+import { reestimateDeltas } from "@/domain/estimate";
+import { localDateString } from "@/domain/prayerDay";
 import type { SettingsDoc } from "@/domain/schemas";
 import { FARD_PRAYERS, PRAYER_LABEL, type Prayer } from "@/domain/types";
 import { addPasskey, signOut, useSession } from "@/lib/auth-client";
@@ -35,6 +38,15 @@ const METHODS: { value: SettingsDoc["prayer"]["method"]; label: string }[] = [
   { value: "Singapore", label: "Singapore" },
   { value: "Tehran", label: "Tehran" },
   { value: "Turkey", label: "Turkey (Diyanet)" },
+];
+
+const SECTIONS = [
+  { id: "account", label: "Account" },
+  { id: "prayer-times", label: "Prayer times" },
+  { id: "reminders", label: "Reminders" },
+  { id: "debt", label: "Debt" },
+  { id: "display", label: "Display" },
+  { id: "data", label: "Your data" },
 ];
 
 /** Label and control share a top edge; the label column shrinks, the control never does. */
@@ -65,6 +77,7 @@ export function SettingsScreen() {
   const [adjust, setAdjust] = useState<Prayer | null>(null);
   const [target, setTarget] = useState("");
   const [note, setNote] = useState("");
+  const [reestimating, setReestimating] = useState(false);
   const prayers: Prayer[] = settings.prayer.trackWitr ? [...FARD_PRAYERS, "witr"] : [...FARD_PRAYERS];
   const canPush = useClientValue(pushSupported, false);
 
@@ -123,6 +136,34 @@ export function SettingsScreen() {
     setNote("");
   }
 
+  const fard = prayers.filter((p) => p !== "witr");
+  const todayIso = localDateString(new Date(), settings.prayer.location?.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+
+  // A re-estimate is written as ordinary adjustments, so it shows in History and can be undone.
+  async function applyReestimate(estimate: number) {
+    const deltas = reestimateDeltas(fard, state.initial, state.adjustments, estimate);
+    const ids: string[] = [];
+    for (const d of deltas) {
+      const e = await append({ type: "debt.adjust", payload: { v: 1, prayer: d.prayer, delta: d.delta, note: "Re-estimated from dates" } });
+      ids.push(e.id);
+    }
+    setReestimating(false);
+    toast(
+      deltas.length === 0
+        ? { message: "That matches your current estimate. Nothing changed." }
+        : {
+            message: `Estimate updated for ${deltas.length} ${deltas.length === 1 ? "prayer" : "prayers"}.`,
+            tone: "teal",
+            action: {
+              label: "Undo",
+              onClick: async () => {
+                for (const id of ids) await revoke(id);
+              },
+            },
+          },
+    );
+  }
+
   async function doSignOut() {
     await signOut();
     router.replace("/sign-in");
@@ -141,16 +182,23 @@ export function SettingsScreen() {
 
   return (
     <>
-      <header className="mb-3 flex items-center gap-3">
-        <button type="button" aria-label="Back" onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))} className="brut-sm pressable grid h-11 w-11 shrink-0 place-items-center rounded-[var(--r-sm)] min-[900px]:hidden">
-          <Icon name="back" />
-        </button>
-        <h1 className="display text-[28px]">Settings</h1>
-        <Sticker kind="square" tone="coral" size={16} rotate={12} inline />
-      </header>
+      <Header title="Settings" sticker={<Sticker kind="square" tone="coral" size={16} rotate={12} inline />} />
+
+      {/* Jump links stay in reach while the long page scrolls. Its own scroller, so the page never scrolls sideways. */}
+      <nav aria-label="Settings sections" className="sticky top-[env(safe-area-inset-top,0px)] z-30 -mx-4 mb-3 overflow-x-auto border-b-[length:var(--bw)] border-ink bg-cream px-4 py-2 min-[900px]:mx-0 min-[900px]:px-0">
+        <ul className="flex w-max gap-2 pr-4">
+          {SECTIONS.map((sec) => (
+            <li key={sec.id}>
+              <a href={`#${sec.id}`} className={buttonClass({ size: "sm", variant: "flat" })}>
+                {sec.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
 
       <div className="flex flex-col gap-4">
-        <SectionCard title="Account">
+        <SectionCard id="account" title="Account">
           <Row label={session?.user.name ?? "Not signed in"} hint={session?.user.email ?? (process.env.NEXT_PUBLIC_AUTH_OPTIONAL === "true" ? "Local development mode" : "Sign in to sync across devices")}>
             {session ? (
               <Button size="sm" onClick={() => (sync.unsynced > 0 ? setLeaving(true) : void doSignOut())}>
@@ -169,7 +217,7 @@ export function SettingsScreen() {
           </Row>
         </SectionCard>
 
-        <SectionCard title="Prayer times">
+        <SectionCard id="prayer-times" title="Prayer times">
           <div className="py-2.5">
             <LocationPicker key={settings.prayer.location ? `${settings.prayer.location.lat},${settings.prayer.location.lng}` : "none"} value={settings.prayer.location} onChange={(location) => setPrayer({ location })} />
           </div>
@@ -206,7 +254,7 @@ export function SettingsScreen() {
           </Row>
         </SectionCard>
 
-        <SectionCard title="Reminders">
+        <SectionCard id="reminders" title="Reminders">
           <Row label="Notifications" hint={canPush ? "One at the start of each prayer, plus an evening review." : "This browser cannot receive notifications."}>
             <Toggle on={settings.reminders.enabled} onChange={toggleReminders} label="Notifications" disabled={!canPush} />
           </Row>
@@ -235,7 +283,7 @@ export function SettingsScreen() {
           )}
         </SectionCard>
 
-        <SectionCard title="Debt">
+        <SectionCard id="debt" title="Debt">
           {prayers.map((p) => (
             <Row key={p} label={PRAYER_LABEL[p]} hint={`${fmtInt(Math.max(0, state.debt[p]))} owed. Started at ${fmtInt(state.initial[p])}.`}>
               <Button
@@ -251,10 +299,15 @@ export function SettingsScreen() {
               </Button>
             </Row>
           ))}
-          <p className="border-t-2 border-ink py-2.5 text-[13px] font-semibold text-mute">Adjustments are added to your log, never hidden, and can be undone.</p>
+          <div className="border-t-2 border-ink py-2.5">
+            <Button block variant="flat" onClick={() => setReestimating(true)}>
+              Re-estimate from dates
+            </Button>
+            <p className="mt-2 text-[13px] font-semibold text-mute">Adjustments are added to your history, never hidden, and can be undone.</p>
+          </div>
         </SectionCard>
 
-        <SectionCard title="Display">
+        <SectionCard id="display" title="Display">
           <Row label="Hijri date" hint="Shift it if your local moon sighting differs.">
             <select aria-label="Hijri date offset" value={settings.display.hijriOffsetDays} onChange={(e) => patch((d) => ({ ...d, display: { ...d.display, hijriOffsetDays: Number(e.target.value) } }))}>
               {[-2, -1, 0, 1, 2].map((v) => (
@@ -266,7 +319,7 @@ export function SettingsScreen() {
           </Row>
         </SectionCard>
 
-        <SectionCard title="Your data" tone="pink">
+        <SectionCard id="data" title="Your data" tone="pink">
           <Row label="Export everything" hint="Every entry and setting, as JSON. Works offline.">
             <Button
               size="sm"
@@ -330,6 +383,37 @@ export function SettingsScreen() {
           <span className="text-[13px] font-black">Note, if you like</span>
           <input id="adjust-note" className="w-full" maxLength={200} placeholder="Recounted my school years" value={note} onChange={(e) => setNote(e.target.value)} />
         </label>
+      </Sheet>
+
+      <Sheet open={reestimating} onClose={() => setReestimating(false)} title="Re-estimate from dates">
+        <p className="mb-4 text-[13px] font-semibold text-mute">This recalculates the starting estimate for the five daily prayers. What you have logged since stays exactly as it is.</p>
+        <EstimateWizard
+          today={todayIso}
+          useLabel="Update"
+          onCancel={() => setReestimating(false)}
+          onUse={applyReestimate}
+          preview={(e) => {
+            const deltas = reestimateDeltas(fard, state.initial, state.adjustments, e);
+            return deltas.length === 0 ? (
+              <>About {fmtInt(e)} of each prayer, which is what you already have.</>
+            ) : (
+              <>
+                About {fmtInt(e)} of each prayer.
+                <ul className="mt-1.5 flex flex-col gap-0.5">
+                  {deltas.map((d) => (
+                    <li key={d.prayer} className="num flex justify-between gap-3">
+                      <span>{PRAYER_LABEL[d.prayer]}</span>
+                      <span>
+                        {fmtInt(d.from)} to {fmtInt(d.to)} ({d.delta > 0 ? "+" : "−"}
+                        {fmtInt(Math.abs(d.delta))})
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            );
+          }}
+        />
       </Sheet>
 
       <Sheet

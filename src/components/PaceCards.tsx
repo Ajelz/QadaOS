@@ -18,6 +18,12 @@ export function PaceCards({ planFinish, hasPlan, perDay, pace, historyDays }: { 
             <div className="display num mt-1.5 whitespace-nowrap text-[20px] min-[360px]:text-[28px]">{planFinish.days === 0 ? "Clear" : fmtMonth(planFinish.finishDay)}</div>
             <p className="mt-1 text-[13px] font-semibold text-mute">{planFinish.days === 0 ? "Nothing owed." : `${perDay ? `At ${perDay} a day, ` : ""}about ${fmtRelativeDays(planFinish.days)}. Raise the daily number to bring it closer.`}</p>
           </>
+        ) : hasPlan && perDay ? (
+          // The plan does make progress, just not within the hundred years the projection looks ahead.
+          <>
+            <div className="mt-1.5 text-[17px] font-black text-mute">100+ years</div>
+            <p className="mt-1 text-[13px] font-semibold text-mute">At {perDay} a day this runs past a century. Raise the daily number to bring it within reach.</p>
+          </>
         ) : (
           <>
             <div className="mt-1.5 text-[17px] font-black text-mute">{hasPlan ? "No date" : "No plan"}</div>

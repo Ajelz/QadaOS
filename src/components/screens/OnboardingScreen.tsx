@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { EstimateWizard } from "@/components/EstimateWizard";
 import { LocationPicker } from "@/components/LocationPicker";
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
@@ -39,10 +40,6 @@ function loadDraft(fallback: SettingsDoc["prayer"]): Draft {
   } catch {
     return empty;
   }
-}
-
-function daysBetweenDates(a: string, b: string): number {
-  return Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86_400_000));
 }
 
 /** The draft lives in localStorage, so the flow only mounts on the client, after it can be read. */
@@ -87,9 +84,6 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
   const set = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }));
 
   const [wizard, setWizard] = useState(false);
-  const [wStart, setWStart] = useState("");
-  const [wEnd, setWEnd] = useState("");
-  const [wExempt, setWExempt] = useState(0);
   const [same, setSame] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -108,8 +102,6 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
   const today = localDateString(new Date(), prayer.location?.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
   const chosen = TEMPLATES.find((t) => t.id === template);
   const chosenFinish = chosen ? simulateFinish(counts, chosen.build(prayers), today) : undefined;
-  const wizardReversed = Boolean(wStart && wEnd && wEnd < wStart);
-  const wizardEstimate = wStart && wEnd && !wizardReversed ? Math.max(0, Math.round(daysBetweenDates(wStart, wEnd) - (daysBetweenDates(wStart, wEnd) / 30.44) * wExempt)) : null;
   // Witr is not missed on the same basis as the five, so the estimate never fills it.
   const fard = prayers.filter((p) => p !== "witr");
   const wouldReplace = fard.some((p) => debt[p] !== "");
@@ -118,10 +110,9 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
     set({ debt: { ...debt, ...(Object.fromEntries(fard.map((p) => [p, value])) as Record<Prayer, string>) } });
   }
 
-  function applyWizard() {
-    if (wizardEstimate === null) return;
-    fillAll(String(wizardEstimate));
-    setSame(String(wizardEstimate));
+  function applyWizard(estimate: number) {
+    fillAll(String(estimate));
+    setSame(String(estimate));
     setWizard(false);
   }
 
@@ -274,46 +265,20 @@ function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
                 {total >= 1000 && <p className="mt-3 rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-cream px-3 py-2 text-[13px] font-bold">{fmtInt(total)} is a number, not a verdict. The next step turns it into a few prayers a day.</p>}
               </>
             ) : (
-              <div className="flex flex-col gap-4">
-                <p className="text-[13px] font-semibold text-mute">Two dates give a starting estimate. It fills in every prayer with the same number, which you can then edit.</p>
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-black">Roughly when did prayer become obligatory for you?</span>
-                  <input id="w-start" type="date" className="w-full" value={wStart} max={today} onChange={(e) => setWStart(e.target.value)} />
-                </label>
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-black">When did you begin praying regularly?</span>
-                  <input id="w-end" type="date" className="w-full" value={wEnd} min={wStart || undefined} max={today} onChange={(e) => setWEnd(e.target.value)} />
-                </label>
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-black">Days each month with no obligation</span>
-                  <select className="w-full" value={wExempt} onChange={(e) => setWExempt(Number(e.target.value))}>
-                    {[0, 3, 4, 5, 6, 7, 8, 10].map((v) => (
-                      <option key={v} value={v}>
-                        {v === 0 ? "None" : `${v} days`}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-[13px] font-semibold text-mute">For example during menstruation. Leave at none if this does not apply to you.</span>
-                </label>
-                {wizardReversed && (
-                  <p role="alert" className="rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-ink px-3 py-2 text-[13px] font-bold text-cream">
-                    The second date has to come after the first.
-                  </p>
-                )}
-                {wizardEstimate !== null && (
-                  <p className="rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-orange px-3 py-2 text-[13px] font-bold">
-                    About {fmtInt(wizardEstimate)} of each prayer, {fmtInt(wizardEstimate * fard.length)} in total.{wouldReplace ? " This replaces the numbers you typed for the five daily prayers." : ""}
-                  </p>
-                )}
-                <div className="flex gap-3">
-                  <Button block onClick={() => setWizard(false)}>
-                    Cancel
-                  </Button>
-                  <Button block tone="coral" disabled={wizardEstimate === null} onClick={applyWizard}>
-                    Use this estimate
-                  </Button>
-                </div>
-              </div>
+              <>
+                <p className="mb-4 text-[13px] font-semibold text-mute">Two dates give a starting estimate. It fills in the five daily prayers with the same number, which you can then edit.</p>
+                <EstimateWizard
+                  today={today}
+                  useLabel="Use this estimate"
+                  onCancel={() => setWizard(false)}
+                  onUse={applyWizard}
+                  preview={(e) => (
+                    <>
+                      About {fmtInt(e)} of each prayer, {fmtInt(e * fard.length)} in total.{wouldReplace ? " This replaces the numbers you typed for the five daily prayers." : ""}
+                    </>
+                  )}
+                />
+              </>
             )}
           </Card>
         )}

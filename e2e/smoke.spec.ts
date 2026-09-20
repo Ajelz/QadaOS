@@ -101,7 +101,7 @@ test("a daily prayer can be marked missed and the debt grows by one, without any
 
 test("log, plan, stats and settings render", async () => {
   await page.goto("/log");
-  await expect(page.getByRole("heading", { name: "Log", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "History", exact: true })).toBeVisible();
   await expect(page.getByText("Start: 4,000 Fajr")).toBeVisible();
   await shot("11-log");
 

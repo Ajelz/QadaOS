@@ -54,6 +54,8 @@ export interface LedgerState {
   buffer: number;
   /** Initial estimate per prayer, latest `debt.set_initial` wins. */
   initial: PerPrayer<number>;
+  /** Sum of `debt.adjust` deltas per prayer. `initial + adjustments` is the current starting estimate. */
+  adjustments: PerPrayer<number>;
   /** Keyed `${prayerDay}|${prayer}`. */
   resolutions: Record<string, Resolution>;
   /** Qada logged per prayer day, per prayer. */
@@ -94,6 +96,7 @@ export function emptyState(): LedgerState {
     totalOwed: 0,
     buffer: 0,
     initial: perPrayer(() => 0),
+    adjustments: perPrayer(() => 0),
     resolutions: {},
     qadaByDay: {},
     periods: [],
@@ -172,6 +175,7 @@ export function reduce(input: readonly LedgerEvent[]): LedgerState {
     if (r.status === "missed") missed[key.split("|")[1] as Prayer] += 1;
   }
 
+  state.adjustments = adjustments;
   state.debt = perPrayer((p) => state.initial[p] + adjustments[p] + missed[p] - qadaTotal[p]);
   state.totalOwed = Object.values(state.debt).reduce((s, d) => s + Math.max(0, d), 0);
   state.buffer = Object.values(state.debt).reduce((s, d) => s + Math.max(0, -d), 0);

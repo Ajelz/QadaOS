@@ -28,9 +28,9 @@ export function CardTitle({ className = "", ...rest }: HTMLAttributes<HTMLHeadin
 }
 
 /** A card with an ink header bar. Used where a screen is a stack of sections (Settings). */
-export function SectionCard({ title, children, tone = "paper", className = "" }: { title: string; children: ReactNode; tone?: Tone; className?: string }) {
+export function SectionCard({ title, children, tone = "paper", className = "", id }: { title: string; children: ReactNode; tone?: Tone; className?: string; id?: string }) {
   return (
-    <section className={`brut overflow-hidden rounded-[var(--r-card)] ${TONE[tone]} ${className}`}>
+    <section id={id} aria-label={title} className={`brut scroll-mt-[72px] overflow-hidden rounded-[var(--r-card)] ${TONE[tone]} ${className}`}>
       <h2 className="border-b-[length:var(--bw)] border-ink bg-ink px-4 py-2 text-[13px] font-black tracking-[0.02em] text-cream">{title}</h2>
       <div className="py-2 pl-4 pr-5">{children}</div>
     </section>

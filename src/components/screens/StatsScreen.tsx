@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Header } from "@/components/Header";
 import { PaceCards } from "@/components/PaceCards";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Segmented } from "@/components/ui/Segmented";
 import { PageFoot, Sticker } from "@/components/ui/Sticker";
-import { localDateString, shiftDay } from "@/domain/prayerDay";
+import { activityBuckets, type ActivityWindow } from "@/domain/activity";
+import { localDateString } from "@/domain/prayerDay";
 import { dailyTargetCount, daysBetween, paceFinish, simulateFinish } from "@/domain/strategy";
 import { PRAYER_LABEL, RAKAH, type Prayer } from "@/domain/types";
 import { fmtDay, fmtInt } from "@/lib/format";
@@ -35,14 +36,8 @@ export function StatsScreen() {
     return { owed, initial, cleared: Math.max(0, initial - owed) };
   }, [prayers, state.debt, state.initial, rakah]);
 
-  const last7 = useMemo(() => {
-    const w = (p: Prayer) => (rakah ? RAKAH[p] : 1);
-    return daysBetween(shiftDay(today, -6), today).map((d) => {
-      const qada = Object.entries(state.qadaByDay[d] ?? {}).reduce((s, [p, n]) => s + (n ?? 0) * w(p as Prayer), 0);
-      const missed = Object.entries(state.resolutions).filter(([k, r]) => k.startsWith(`${d}|`) && r.status === "missed").length;
-      return { day: d, qada, missed };
-    });
-  }, [state.qadaByDay, state.resolutions, today, rakah]);
+  const [windowDays, setWindowDays] = useState<ActivityWindow>(7);
+  const buckets = useMemo(() => activityBuckets(state, today, windowDays, (p) => (rakah ? RAKAH[p] : 1)), [state, today, windowDays, rakah]);
 
   const series = useMemo(() => {
     const w = (p: Prayer) => (rakah ? RAKAH[p] : 1);
@@ -69,9 +64,11 @@ export function StatsScreen() {
 
   const pace = useMemo(() => paceFinish(state, today, 30), [state, today]);
   const planFinish = useMemo(() => (state.activeStrategy ? simulateFinish(state.debt, state.activeStrategy, today) : undefined), [state.activeStrategy, state.debt, today]);
-  const maxBar = Math.max(1, ...last7.map((d) => d.qada));
-  const total7 = last7.reduce((s, d) => s + d.qada, 0);
-  const anyMissed = last7.some((d) => d.missed > 0);
+  const maxBar = Math.max(1, ...buckets.map((b) => b.qada));
+  const totalQada = buckets.reduce((s, b) => s + b.qada, 0);
+  const totalMissed = buckets.reduce((s, b) => s + b.missed, 0);
+  const daily = windowDays !== 90;
+  const detailed = windowDays === 7;
 
   const plot = useMemo(() => {
     if (series.length < 2) return null;
@@ -124,27 +121,58 @@ export function StatsScreen() {
           </Card>
 
           <Card>
-            <div className="mb-3 flex items-baseline justify-between gap-2">
-              <CardTitle>Qada in the last 7 days</CardTitle>
-              <span className="num shrink-0 text-[13px] font-extrabold">{fmtInt(total7)} total</span>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <CardTitle>Qada you made up</CardTitle>
+              <Segmented
+                label="Period"
+                tone="violet"
+                value={String(windowDays) as "7" | "30" | "90"}
+                onChange={(v) => setWindowDays(Number(v) as ActivityWindow)}
+                options={[
+                  { value: "7", label: "7 days" },
+                  { value: "30", label: "30" },
+                  { value: "90", label: "90" },
+                ]}
+              />
             </div>
-            {total7 === 0 ? (
-              <p className="rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-cream px-3 py-4 text-center text-[13px] font-extrabold">Nothing logged in the last seven days.</p>
+            {totalQada === 0 ? (
+              <p className="rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-cream px-3 py-4 text-center text-[13px] font-extrabold">Nothing logged in the last {windowDays} days.</p>
             ) : (
-              <div className="flex gap-1.5" role="img" aria-label={`Qada per day: ${last7.map((d) => `${fmtDay(d.day)} ${d.qada}`).join(", ")}`}>
-                {last7.map((d) => (
-                  <div key={d.day} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-                    <span className="num text-[11px] font-black leading-none">{d.qada > 0 ? fmtInt(d.qada) : " "}</span>
-                    <div className="relative w-full overflow-hidden rounded-t-[6px] border-[length:var(--bw)] border-ink bg-cream" style={{ height: TRACK }}>
-                      <div className={`absolute inset-x-0 bottom-0 ${d.day === today ? "bg-yellow" : "bg-violet"} ${d.qada > 0 && d.qada < maxBar ? "border-t-[length:var(--bw)] border-ink" : ""}`} style={{ height: `${d.qada === 0 ? 0 : Math.max(8, (d.qada / maxBar) * 100)}%` }} />
+              <>
+                <div className={`flex ${detailed ? "gap-1.5" : "gap-[3px]"}`} role="img" aria-label={`Qada per ${daily ? "day" : "week"} over the last ${windowDays} days, ${fmtInt(totalQada)} in total. ${buckets.filter((b) => b.qada > 0).map((b) => `${fmtDay(b.start)}: ${b.qada}`).join(", ")}`}>
+                  {buckets.map((b) => (
+                    <div key={b.start} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                      {detailed && <span className="num text-[11px] font-black leading-none">{b.qada > 0 ? fmtInt(b.qada) : "\u00a0"}</span>}
+                      <div className={`relative w-full overflow-hidden border-ink bg-cream ${detailed ? "rounded-t-[6px] border-[length:var(--bw)]" : "rounded-t-[3px] border-2"}`} style={{ height: TRACK }}>
+                        <div className={`absolute inset-x-0 bottom-0 ${b.isCurrent ? "bg-yellow" : "bg-violet"} ${detailed && b.qada > 0 && b.qada < maxBar ? "border-t-[length:var(--bw)] border-ink" : ""}`} style={{ height: `${b.qada === 0 ? 0 : Math.max(8, (b.qada / maxBar) * 100)}%` }} />
+                      </div>
+                      {detailed && (
+                        <>
+                          <span className="text-[11px] font-black leading-none">{fmtDay(b.start).slice(0, 2)}</span>
+                          <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${b.missed > 0 ? "bg-ink" : "bg-transparent"}`} />
+                        </>
+                      )}
                     </div>
-                    <span className="text-[11px] font-black leading-none">{fmtDay(d.day).slice(0, 2)}</span>
-                    <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${d.missed > 0 ? "bg-ink" : "bg-transparent"}`} />
+                  ))}
+                </div>
+                {!detailed && (
+                  <div className="mt-1.5 flex justify-between text-[11px] font-extrabold">
+                    <span>{fmtDay(buckets[0].start)}</span>
+                    <span>{daily ? "one bar a day" : "one bar a week"}</span>
+                    <span>{fmtDay(buckets.at(-1)!.end)}</span>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
-            {total7 > 0 && <p className="mt-2 text-[11px] font-semibold text-mute">Yellow is today.{anyMissed ? " A dot marks a day with a missed daily prayer." : ""}</p>}
+            <p className="mt-2 text-[13px] font-bold">
+              <span className="num">{fmtInt(totalQada)}</span> made up{totalMissed > 0 ? (
+                <>
+                  , <span className="num">{fmtInt(totalMissed)}</span> daily {totalMissed === 1 ? "prayer" : "prayers"} missed
+                </>
+              ) : null}{" "}
+              in {windowDays} days.
+            </p>
+            {totalQada > 0 && <p className="mt-1 text-[11px] font-semibold text-mute">Yellow is {daily ? "today" : "this week"}.{detailed && totalMissed > 0 ? " A dot marks a day with a missed daily prayer." : ""}</p>}
           </Card>
 
           <PaceCards planFinish={planFinish} hasPlan={Boolean(state.activeStrategy)} perDay={state.activeStrategy ? dailyTargetCount(state, state.activeStrategy) : undefined} pace={pace} historyDays={series.length ? daysBetween(series[0].day, today).length : 0} />

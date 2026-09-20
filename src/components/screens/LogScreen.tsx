@@ -99,7 +99,7 @@ export function LogScreen() {
 
   return (
     <>
-      <Header title="Log" sub="Every change, newest first" sticker={<Sticker kind="squiggle" tone="violet" size={18} inline />} />
+      <Header title="History" sub="Everything you have recorded, newest first" sticker={<Sticker kind="squiggle" tone="violet" size={18} inline />} />
 
       <div className="mb-4 flex flex-col gap-2">
         <Button
@@ -237,7 +237,7 @@ export function LogScreen() {
         {confirming && (
           <>
             <p className="text-[17px] font-black leading-tight">{describe(confirming).title}</p>
-            <p className="mt-2 text-[13px] font-semibold text-mute">This entry shapes your whole ledger, so your totals and projections will change. You can restore it afterwards from the undone entries at the bottom of the Log.</p>
+            <p className="mt-2 text-[13px] font-semibold text-mute">This entry shapes your whole ledger, so your totals and projections will change. You can restore it afterwards from the undone entries at the bottom of History.</p>
           </>
         )}
       </Sheet>

@@ -2,13 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Icon } from "./ui/Icon";
 
+/**
+ * Five destinations. "History" rather than "Log": the tab holds the record, while the act
+ * of logging lives on Today and in the log sheet. Settings is a tab, not a hidden gear.
+ * The route stays /log so existing links and the offline cache keep working.
+ */
 const TABS = [
   { href: "/", label: "Today" },
-  { href: "/log", label: "Log" },
+  { href: "/log", label: "History" },
   { href: "/plan", label: "Plan" },
   { href: "/stats", label: "Stats" },
+  { href: "/settings", label: "Settings" },
 ];
 
 function isOn(path: string, href: string) {
@@ -20,7 +25,7 @@ export function TabBar() {
   const path = usePathname();
   return (
     <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 min-[900px]:hidden" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}>
-      <div className="brut flex w-full max-w-[448px] gap-1 rounded-full p-1">
+      <div className="brut flex w-full max-w-[448px] rounded-full p-1">
         {TABS.map((t) => {
           const on = isOn(path, t.href);
           return (
@@ -28,7 +33,7 @@ export function TabBar() {
               key={t.href}
               href={t.href}
               aria-current={on ? "page" : undefined}
-              className={`grid min-h-[48px] flex-1 place-items-center rounded-full border-[length:var(--bw)] text-[13px] font-black ${on ? "border-ink bg-yellow" : "border-transparent"}`}
+              className={`grid min-h-[48px] min-w-0 flex-1 place-items-center rounded-full border-[length:var(--bw)] text-[11px] font-black tracking-[-0.01em] min-[380px]:text-[13px] ${on ? "border-ink bg-yellow" : "border-transparent"}`}
             >
               {t.label}
             </Link>
@@ -61,10 +66,6 @@ export function SideRail() {
           );
         })}
       </nav>
-      <Link href="/settings" aria-current={path.startsWith("/settings") ? "page" : undefined} className={`brut-sm pressable flex min-h-[48px] items-center gap-2 rounded-[var(--r-btn)] px-3 text-[15px] font-black ${path.startsWith("/settings") ? "bg-yellow" : ""}`}>
-        <Icon name="gear" size={20} />
-        Settings
-      </Link>
     </aside>
   );
 }

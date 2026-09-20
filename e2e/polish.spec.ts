@@ -50,7 +50,7 @@ test("every control is at least 44px in both directions", async ({ browser }) =>
     await page.goto(route);
     await page.waitForLoadState("networkidle");
     const small = await page.evaluate(() =>
-      [...document.querySelectorAll<HTMLElement>("button, [role=switch], [role=radio], select, input, nav a, a.brut, a.brut-sm")]
+      [...document.querySelectorAll<HTMLElement>("button, [role=switch], [role=radio], select, input, nav a, a.brut, a.brut-sm, a.brut-flat")]
         .filter((el) => el.offsetParent !== null)
         .map((el) => ({ el, r: el.getBoundingClientRect() }))
         .filter(({ el, r }) => (r.height < 43.5 || r.width < 43.5) && !(el instanceof HTMLInputElement && el.type === "checkbox"))
@@ -174,4 +174,69 @@ test("without prayer times the resolve sheet does not ask on time versus late", 
   await page.getByRole("button", { name: "Keep my ledger as it is" }).click();
   await expect(page).toHaveURL("http://localhost:3100/");
   await ctx.close();
+});
+
+test("navigation has five destinations, with History and Settings as tabs", async ({ browser }) => {
+  const page = await seeded(browser, { width: 320, height: 568 });
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await expect(nav.getByRole("link")).toHaveText(["Today", "History", "Plan", "Stats", "Settings"]);
+  await nav.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  await page.screenshot({ path: `${SHOTS}/40-tabs-320.png` });
+  await page.context().close();
+});
+
+test("settings has a section index, and a re-estimate that is written as undoable adjustments", async ({ browser }) => {
+  const page = await seeded(browser, { width: 390, height: 844 });
+  await page.goto("/settings");
+  await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Debt" }).click();
+  await expect(page.getByRole("button", { name: "Re-estimate from dates" })).toBeInViewport();
+  await page.screenshot({ path: `${SHOTS}/41-settings-index.png` });
+
+  await page.getByRole("button", { name: "Re-estimate from dates" }).click();
+  const sheet = page.getByRole("dialog", { name: "Re-estimate from dates" });
+  await sheet.locator("#w-start").fill("2020-01-01");
+  await sheet.locator("#w-end").fill("2022-01-01");
+  await expect(sheet.getByText("99,999 to 731").first()).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/42-reestimate.png` });
+  await sheet.getByRole("button", { name: "Update", exact: true }).click();
+  await expect(page.getByText("Estimate updated for 5 prayers.")).toBeVisible();
+
+  await page.goto("/");
+  await expect(page.getByText("3,655", { exact: true })).toBeVisible();
+  await page.goto("/log");
+  await expect(page.getByText("adjustment: Re-estimated from dates").first()).toBeVisible();
+  await page.context().close();
+});
+
+test("the stats chart switches between 7, 30 and 90 days", async ({ browser }) => {
+  const page = await seeded(browser, { width: 390, height: 844 });
+  await page.getByRole("button", { name: "Log qada" }).last().click();
+  await page.getByRole("button", { name: "Set to 10" }).click();
+  await page.getByRole("button", { name: /^Log 10 / }).click();
+
+  await page.goto("/stats");
+  const period = page.getByRole("radiogroup", { name: "Period" });
+  await expect(page.getByText(/made up\s+in 7 days\./)).toBeVisible();
+  await period.getByRole("radio", { name: "30" }).click();
+  await expect(page.getByText("one bar a day")).toBeVisible();
+  await expect(page.getByText(/made up\s+in 30 days\./)).toBeVisible();
+  await period.getByRole("radio", { name: "90" }).click();
+  await expect(page.getByText("one bar a week")).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/43-stats-90.png` });
+  await page.context().close();
+});
+
+test("a keyboard user lands on Undo after an action, and gets their place back", async ({ browser }) => {
+  const page = await seeded(browser, { width: 390, height: 844 });
+  const prayed = page.getByRole("button", { name: "I prayed Asr" });
+  await prayed.focus();
+  await page.keyboard.press("Enter");
+  const undo = page.getByRole("button", { name: "Undo" });
+  await expect(undo).toBeFocused();
+  await page.keyboard.press("Enter");
+  // Undone: Asr is open again.
+  await expect(page.getByRole("button", { name: "I prayed Asr" })).toBeVisible();
+  await page.context().close();
 });
