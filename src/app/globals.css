@@ -1,8 +1,26 @@
 @import "tailwindcss";
 
 /*
-  QadaOS visual language (spec: UX Design). Neo-brutalist and single-theme by choice:
-  cream ground, ink borders, hard offset shadows, flat role colors, Archivo heavy.
+  QadaOS visual language. Neo-brutalist and single-theme by choice.
+
+  RULES (do not drift):
+  - One border weight for objects: --bw (2.5px). 2px only for parts INSIDE a bordered object.
+  - Two shadow levels: --shadow (4px) for cards, buttons, tiles, sheets, toasts;
+    --shadow-sm (2px) for small controls and the pressed state.
+  - Three radii plus pill: --r-card 14, --r-btn 12 (buttons, tiles), --r-sm 8 (inputs, small controls).
+  - Type scale: 11 / 13 / 15 / 17 / 20 / 28 / 44 / 54. Nothing else.
+  - No opacity tricks. Disabled, scrims and tints are flat colors.
+
+  COLOR ROLES (one meaning each):
+  - coral  = the current prayer window and THE primary action
+  - yellow = pending, and the active tab
+  - teal   = prayed / success / debt falling
+  - sky    = prayed late, and the Stats anchor
+  - violet = plan and strategy
+  - orange = debt owed (the per-prayer bars)
+  - grey   = exempt, missed (a neutral fact), debt rising
+  - rust   = destructive only
+  - ink    = offline and errors
 */
 :root {
   --cream: #faf3e7;
@@ -15,16 +33,18 @@
   --sky: #7ac3e6;
   --orange: #f4a25b;
   --pink: #f5b8c4;
-  --mute: #6b655b;
+  --rust: #c94f3d;
+  --mute: #5f594f;
   --grey: #d9d2c5;
+  --trough: #efe7d8;
+  --sky-tint: #c6e4f3;
 
   --bw: 2.5px;
   --shadow: 4px 4px 0 var(--ink);
   --shadow-sm: 2px 2px 0 var(--ink);
-  --shadow-lg: 6px 6px 0 var(--ink);
   --r-card: 14px;
   --r-btn: 12px;
-  --r-tile: 12px;
+  --r-sm: 8px;
 
   color-scheme: light;
 }
@@ -40,49 +60,138 @@
   --color-sky: var(--sky);
   --color-orange: var(--orange);
   --color-pink: var(--pink);
+  --color-rust: var(--rust);
   --color-mute: var(--mute);
   --color-grey: var(--grey);
+  --color-trough: var(--trough);
+  --color-sky-tint: var(--sky-tint);
   --font-sans: var(--font-archivo), ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --radius-card: var(--r-card);
   --radius-btn: var(--r-btn);
-  --radius-tile: var(--r-tile);
+  --radius-sm: var(--r-sm);
   --shadow-hard: var(--shadow);
   --shadow-hard-sm: var(--shadow-sm);
-  --shadow-hard-lg: var(--shadow-lg);
 }
 
-html,
-body {
-  height: 100%;
-}
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
 
-body {
-  margin: 0;
-  background: var(--cream);
-  background-image: radial-gradient(color-mix(in srgb, var(--ink) 14%, transparent) 1.2px, transparent 1.3px);
-  background-size: 22px 22px;
-  color: var(--ink);
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.3;
-  -webkit-font-smoothing: antialiased;
-  -webkit-tap-highlight-color: transparent;
-  overscroll-behavior-y: none;
+  body {
+    margin: 0;
+    background-color: var(--cream);
+    /* Half-drop dot pattern: two offset grids so it reads as a pattern, not graph paper. */
+    background-image:
+      radial-gradient(color-mix(in srgb, var(--ink) 20%, var(--cream)) 1.6px, transparent 1.7px),
+      radial-gradient(color-mix(in srgb, var(--ink) 20%, var(--cream)) 1.6px, transparent 1.7px);
+    background-size: 24px 24px;
+    background-position:
+      0 0,
+      12px 12px;
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.35;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+
+  /* Violet, not ink: an ink ring vanishes against ink borders and shadows. */
+  :focus-visible {
+    outline: 3px solid var(--violet);
+    outline-offset: 3px;
+  }
+
+  /* Native controls join the language. 16px text stops iOS zooming on focus. */
+  select,
+  input[type="text"],
+  input[type="number"],
+  input[type="date"],
+  input[type="search"],
+  input:not([type]) {
+    appearance: none;
+    -webkit-appearance: none;
+    min-height: 44px;
+    min-width: 0;
+    border: var(--bw) solid var(--ink);
+    border-radius: var(--r-sm);
+    background-color: var(--paper);
+    box-shadow: var(--shadow-sm);
+    color: var(--ink);
+    font: inherit;
+    font-size: 16px;
+    font-weight: 800;
+    padding: 8px 12px;
+  }
+  input::placeholder {
+    color: var(--mute);
+    font-weight: 600;
+  }
+  select {
+    padding-right: 36px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23141414' stroke-width='3' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 16px 16px;
+    text-overflow: ellipsis;
+  }
+  input[type="date"] {
+    position: relative;
+    padding-right: 36px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23141414' stroke-width='2.5' stroke-linecap='square'%3E%3Crect x='4' y='6' width='16' height='14'/%3E%3Cpath d='M4 11h16M9 3v5M15 3v5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 18px 18px;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    position: absolute;
+    right: 0;
+    width: 44px;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
+  input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border: var(--bw) solid var(--ink);
+    border-radius: 6px;
+    background-color: var(--paper);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+  }
+  input[type="checkbox"]:checked {
+    background-color: var(--teal);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23141414' stroke-width='3.5' stroke-linecap='square'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+    background-size: 18px 18px;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+  a {
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
 }
 
 /*
-  In the components layer on purpose: Tailwind utilities (bg-coral, bg-yellow, ...) must be
-  able to override the default paper background. Unlayered CSS would always win.
+  Components live in the components layer ON PURPOSE: Tailwind utilities (bg-coral, flex,
+  px-0 ...) must be able to override them. Unlayered CSS would always win and silently
+  break callers.
 */
 @layer components {
-  /* Hard-edged object: every card, button, chip and tile starts here. */
   .brut {
     border: var(--bw) solid var(--ink);
     background: var(--paper);
     box-shadow: var(--shadow);
   }
   .brut-sm {
-    border: 2px solid var(--ink);
+    border: var(--bw) solid var(--ink);
     background: var(--paper);
     box-shadow: var(--shadow-sm);
   }
@@ -90,57 +199,83 @@ body {
     border: var(--bw) solid var(--ink);
     background: var(--paper);
   }
-}
 
-/* Press feedback: the only motion in the app. */
-.pressable {
-  transition:
-    transform 80ms ease,
-    box-shadow 80ms ease;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.pressable:active:not(:disabled) {
-  transform: translate(2px, 2px);
-  box-shadow: var(--shadow-sm);
-}
-.pressable:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    flex: none;
+    border: var(--bw) solid var(--ink);
+    border-radius: 9999px;
+    padding: 0.25rem 0.625rem;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+  .chip-raised {
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Press feedback: the only motion in the app. */
+  .pressable {
+    transition:
+      transform 80ms ease,
+      box-shadow 80ms ease;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: pointer;
+  }
+  .pressable:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: var(--shadow-sm);
+  }
+  /* Disabled is flat: pressed in, greyed, fully opaque. Never translucent. */
+  .pressable:disabled,
+  .pressable[aria-disabled="true"] {
+    background: var(--grey);
+    color: var(--mute);
+    box-shadow: none;
+    transform: translate(2px, 2px);
+    cursor: not-allowed;
+  }
+
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .display {
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 1;
+  }
+
+  /* Skeleton: hard border, grey fill, no shimmer. */
+  .skeleton {
+    background: var(--grey);
+    border: 2px solid var(--ink);
+    border-radius: var(--r-sm);
+  }
+
+  /* The sheet scrim is the page's dot pattern inverted: flat, opaque, on brand. */
+  .scrim {
+    background-color: var(--ink);
+    background-image:
+      radial-gradient(color-mix(in srgb, var(--cream) 34%, var(--ink)) 1.6px, transparent 1.7px),
+      radial-gradient(color-mix(in srgb, var(--cream) 34%, var(--ink)) 1.6px, transparent 1.7px);
+    background-size: 24px 24px;
+    background-position:
+      0 0,
+      12px 12px;
+  }
+
+  /* A recorded miss is a flat hatched fill: a neutral fact, not an alarm and not "empty". */
+  .hatch {
+    background-image: repeating-linear-gradient(45deg, var(--paper) 0 6px, var(--trough) 6px 12px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .pressable {
     transition: none;
   }
-}
-
-:focus-visible {
-  outline: 3px solid var(--ink);
-  outline-offset: 2px;
-}
-
-.num {
-  font-variant-numeric: tabular-nums;
-}
-
-.display {
-  font-weight: 900;
-  letter-spacing: -0.04em;
-  line-height: 0.9;
-}
-
-/* Skeleton block used in loading states: hard border, grey fill, no shimmer. */
-.skeleton {
-  background: var(--grey);
-  border: 2px solid var(--ink);
-  border-radius: 8px;
-}
-
-/* Fixed bottom bar respects the phone's home indicator. */
-.safe-bottom {
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px));
-}
-.safe-top {
-  padding-top: env(safe-area-inset-top, 0px);
 }

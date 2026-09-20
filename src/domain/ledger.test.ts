@@ -189,3 +189,49 @@ describe("reduce: strategy periods", () => {
     expect(state.activeStrategy).toBeUndefined();
   });
 });
+
+describe("reduce: restoring an undone event", () => {
+  test("revoking a revocation brings the original event back", () => {
+    const log = ev("qada.logged", { v: 1, prayer: "fajr", count: 3, prayerDay: "2026-09-19" }, "2026-09-19T10:00:00.000Z");
+    const undo = ev("event.revoked", { v: 1, target: log.id }, "2026-09-19T10:01:00.000Z");
+    const redo = ev("event.revoked", { v: 1, target: undo.id }, "2026-09-19T10:02:00.000Z");
+    const state = reduce([ev("debt.set_initial", { v: 1, prayer: "fajr", count: 10 }, "2026-09-19T09:00:00.000Z"), log, undo, redo]);
+    expect(state.debt.fajr).toBe(7);
+    expect(state.revoked.has(log.id)).toBe(false);
+  });
+
+  test("a restored event can be undone again", () => {
+    const log = ev("qada.logged", { v: 1, prayer: "fajr", count: 3, prayerDay: "2026-09-19" }, "2026-09-19T10:00:00.000Z");
+    const undo = ev("event.revoked", { v: 1, target: log.id }, "2026-09-19T10:01:00.000Z");
+    const redo = ev("event.revoked", { v: 1, target: undo.id }, "2026-09-19T10:02:00.000Z");
+    const undoAgain = ev("event.revoked", { v: 1, target: log.id }, "2026-09-19T10:03:00.000Z");
+    const state = reduce([ev("debt.set_initial", { v: 1, prayer: "fajr", count: 10 }, "2026-09-19T09:00:00.000Z"), log, undo, redo, undoAgain]);
+    expect(state.debt.fajr).toBe(10);
+  });
+
+  test("undone events are listed with the revocation that can restore them", () => {
+    const log = ev("qada.logged", { v: 1, prayer: "fajr", count: 3, prayerDay: "2026-09-19" }, "2026-09-19T10:00:00.000Z");
+    const undo = ev("event.revoked", { v: 1, target: log.id }, "2026-09-19T10:01:00.000Z");
+    const state = reduce([log, undo]);
+    expect(state.undone).toHaveLength(1);
+    expect(state.undone[0].event.id).toBe(log.id);
+    expect(state.undone[0].revokerId).toBe(undo.id);
+    expect(state.undone[0].undoneAt).toBe("2026-09-19T10:01:00.000Z");
+  });
+
+  test("a restored event is no longer listed as undone", () => {
+    const log = ev("qada.logged", { v: 1, prayer: "fajr", count: 3, prayerDay: "2026-09-19" }, "2026-09-19T10:00:00.000Z");
+    const undo = ev("event.revoked", { v: 1, target: log.id }, "2026-09-19T10:01:00.000Z");
+    const redo = ev("event.revoked", { v: 1, target: undo.id }, "2026-09-19T10:02:00.000Z");
+    expect(reduce([log, undo, redo]).undone).toEqual([]);
+  });
+
+  test("restoration is independent of input order", () => {
+    const log = ev("qada.logged", { v: 1, prayer: "fajr", count: 3, prayerDay: "2026-09-19" }, "2026-09-19T10:00:00.000Z");
+    const undo = ev("event.revoked", { v: 1, target: log.id }, "2026-09-19T10:01:00.000Z");
+    const redo = ev("event.revoked", { v: 1, target: undo.id }, "2026-09-19T10:02:00.000Z");
+    const init = ev("debt.set_initial", { v: 1, prayer: "fajr", count: 10 }, "2026-09-19T09:00:00.000Z");
+    expect(reduce([redo, undo, log, init]).debt.fajr).toBe(7);
+    expect(reduce([undo, init, redo, log]).debt.fajr).toBe(7);
+  });
+});

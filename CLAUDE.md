@@ -17,7 +17,10 @@ Prayer-debt ledger PWA. Read `docs/specs/2026-09-19-qadaos-v1.md` before changin
 - **Events are immutable.** Never edit or delete a ledger row. Corrections are `debt.adjust`; undo is `event.revoked`.
 - **Every write goes local first**, then `syncManager.requestSync()`. Route handlers validate with the zod schemas in `src/domain/schemas.ts`.
 - **No streaks, badges or celebrations.** Decision 10 of the spec.
-- **Visual language is law**: cream ground, 2.5px ink borders, hard offset shadows, flat role colours (coral now/primary, yellow pending, teal done, violet plan, sky stats), Archivo heavy. Tokens in `src/app/globals.css`; classes `brut`, `brut-sm`, `pressable`, `display`, `num`.
+- **Visual language is law.** The rules are written at the top of `src/app/globals.css`; read them before touching UI. In short: one border weight (`--bw` 2.5px; 2px only for parts inside a bordered object), two shadows (`--shadow` 4px, `--shadow-sm` 2px), three radii plus pill (`--r-card` 14, `--r-btn` 12, `--r-sm` 8), type scale 11/13/15/17/20/28/44/54 only, Archivo 600 to 900, no opacity tricks (disabled, scrims and tints are flat colours).
+- **Colour roles, one meaning each:** coral = current prayer window and THE primary action (every screen, including sign-in and onboarding); yellow = pending and the active tab; teal = prayed, success, debt falling; sky = prayed late and the Stats anchor; violet = plan and strategy; orange = debt owed (the draining bars); grey = exempt, debt rising; hatch = a recorded miss; rust = destructive only; ink = offline and errors. Prayers have no colour of their own. A miss is never coral or red.
+- **Every control is at least 44px** in both directions, inputs are 16px text (stops iOS zoom), and pinch zoom stays enabled. `e2e/polish.spec.ts` enforces 44px and no horizontal overflow at 320px.
+- **Stickers** sit in the cream only: beside a screen title (the `sticker` slot on `Header`) or in `PageFoot`. Never a pixel offset inside a card stack.
 - Fiqh-sensitive behaviour is always a setting with a neutral default.
 
 ## Commands
@@ -30,6 +33,12 @@ Use Node 24 (`.nvmrc`). Install with `npm install --legacy-peer-deps` (npm 10.8 
 - `npm run db:generate` / `npm run db:migrate` (needs `DATABASE_URL`).
 
 ## Gotchas
+
+- **Tailwind cascade.** Custom classes live in `@layer components` so utilities can override them. Two utilities of equal specificity resolve by stylesheet order, not class order, so never pass `bg-*`, `px-*` or a display utility through `className` to fight a component's own: use the component's prop (`tone`, `padded`, `variant`).
+- **Never build a Tailwind class name dynamically** (`${bp}:hidden`). Tailwind only generates classes it can see written out in full.
+- **Centre with `my-auto`, not `justify-center`,** on full-height pages: when content is taller than the screen, `justify-center` pushes the top out of reach.
+- Sheets are portalled to `<body>`, make everything else `inert`, trap focus, and set `body[data-sheet-open]`, which moves toasts to the top so they never cover sheet controls.
+- Undo is reversible: an `event.revoked` can itself be revoked, and `state.undone` lists what can be restored. Structural entries (starting debt, adjustments, plan start/stop) ask for confirmation before undo.
 
 - adhan reads the process-local calendar fields of the Date it is given; `prayerDay.ts` builds a local-noon Date for the target day on purpose.
 - Serwist runs in configurator mode (`serwist.config.ts`) because its webpack plugin does not work under Turbopack. `public/sw.js` is generated and gitignored.

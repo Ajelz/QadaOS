@@ -5,7 +5,9 @@ import { Header } from "@/components/Header";
 import { QuickLogSheet } from "@/components/sheets/QuickLogSheet";
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
-import { Chip } from "@/components/ui/Chip";
+import { IconButton } from "@/components/ui/IconButton";
+import { Sheet } from "@/components/ui/Sheet";
+import { PageFoot, Sticker } from "@/components/ui/Sticker";
 import { useToast } from "@/components/ui/Toast";
 import type { LedgerEvent } from "@/domain/ledger";
 import { localDateString } from "@/domain/prayerDay";
@@ -14,34 +16,34 @@ import { fmtDay, fmtInt, fmtTime } from "@/lib/format";
 import { useLedger, useLedgerActions, useSettings } from "@/store/hooks";
 import { trackedPrayers, useNow, useSchedule } from "@/store/useSchedule";
 
-const TONE: Record<Prayer, "coral" | "violet" | "teal" | "yellow" | "sky" | "grey"> = {
-  fajr: "coral",
-  dhuhr: "violet",
-  asr: "teal",
-  maghrib: "yellow",
-  isha: "sky",
-  witr: "grey",
-};
+type Direction = "down" | "up" | "neutral" | "structural";
 
-function describe(e: LedgerEvent): { title: string; prayer?: Prayer; detail?: string } {
+/** The rail colour says which way the entry moved the debt. Prayers themselves have no colour. */
+const RAIL: Record<Direction, string> = { down: "bg-teal", up: "bg-grey", neutral: "bg-paper", structural: "bg-ink" };
+
+function describe(e: LedgerEvent): { title: string; detail?: string; direction: Direction; structural: boolean } {
   switch (e.type) {
     case "qada.logged":
-      return { title: `${fmtInt(e.payload.count)} ${PRAYER_LABEL[e.payload.prayer]} qada`, prayer: e.payload.prayer };
+      return { title: `${fmtInt(e.payload.count)} ${PRAYER_LABEL[e.payload.prayer]} qada`, direction: "down", structural: false };
     case "daily.resolved": {
       const s = { on_time: "prayed on time", late: "prayed late", missed: "missed", exempt: "exempt" }[e.payload.status];
-      return { title: `${PRAYER_LABEL[e.payload.prayer]} ${s}`, prayer: e.payload.prayer, detail: fmtDay(e.payload.prayerDay) };
+      return { title: `${PRAYER_LABEL[e.payload.prayer]} ${s}`, direction: e.payload.status === "missed" ? "up" : "neutral", structural: false };
     }
     case "debt.set_initial":
-      return { title: `Starting debt: ${fmtInt(e.payload.count)} ${PRAYER_LABEL[e.payload.prayer]}`, prayer: e.payload.prayer };
+      return { title: `Start: ${fmtInt(e.payload.count)} ${PRAYER_LABEL[e.payload.prayer]}`, detail: "starting estimate", direction: "structural", structural: true };
     case "debt.adjust":
-      return { title: `${e.payload.delta > 0 ? "+" : "−"}${fmtInt(Math.abs(e.payload.delta))} ${PRAYER_LABEL[e.payload.prayer]} adjustment`, prayer: e.payload.prayer, detail: e.payload.note };
+      return { title: `${PRAYER_LABEL[e.payload.prayer]} ${e.payload.delta > 0 ? "+" : "−"}${fmtInt(Math.abs(e.payload.delta))}`, detail: e.payload.note ? `adjustment: ${e.payload.note}` : "estimate adjusted", direction: e.payload.delta > 0 ? "up" : "down", structural: true };
     case "strategy.started":
-      return { title: `Started plan "${e.payload.name}"` };
+      return { title: `Plan started: ${e.payload.name}`, direction: "structural", structural: true };
     case "strategy.stopped":
-      return { title: "Stopped plan" };
+      return { title: "Plan stopped", direction: "structural", structural: true };
     case "event.revoked":
-      return { title: "Undo" };
+      return { title: "Undo", direction: "neutral", structural: false };
   }
+}
+
+function dayOf(e: LedgerEvent): string {
+  return e.type === "qada.logged" || e.type === "daily.resolved" ? e.payload.prayerDay : localDateString(new Date(e.occurredAt), e.tz);
 }
 
 export function LogScreen() {
@@ -52,106 +54,178 @@ export function LogScreen() {
   const { append, revoke } = useLedgerActions();
   const toast = useToast();
   const prayers = trackedPrayers(settings);
+  const tz = settings.prayer.location?.tz;
   const [logOpen, setLogOpen] = useState(false);
   const [preset, setPreset] = useState<Prayer | undefined>();
+  const [confirming, setConfirming] = useState<LedgerEvent | null>(null);
+  const [showUndone, setShowUndone] = useState(false);
+  const [padOpen, setPadOpen] = useState(false);
 
   const groups = useMemo(() => {
     const byDay = new Map<string, LedgerEvent[]>();
     for (const e of [...state.events].reverse()) {
-      const day = e.type === "qada.logged" ? e.payload.prayerDay : e.type === "daily.resolved" ? e.payload.prayerDay : localDateString(new Date(e.occurredAt), e.tz);
-      (byDay.get(day) ?? byDay.set(day, []).get(day)!).push(e);
+      const day = dayOf(e);
+      const list = byDay.get(day);
+      if (list) list.push(e);
+      else byDay.set(day, [e]);
     }
     return [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
   }, [state.events]);
 
   async function quick(p: Prayer, count: number) {
     const e = await append({ type: "qada.logged", payload: { v: 1, prayer: p, count, prayerDay: schedule.prayerDay } });
-    toast({ message: `Logged ${count} ${PRAYER_LABEL[p]}.`, tone: "teal", action: { label: "Undo", onClick: () => revoke(e.id) } });
+    toast({ message: `Logged ${count} ${PRAYER_LABEL[p]} qada.`, tone: "teal", action: { label: "Undo", onClick: () => revoke(e.id) } });
   }
 
   async function undo(e: LedgerEvent) {
-    await revoke(e.id);
-    toast({ message: "Undone." });
+    const r = await revoke(e.id);
+    setConfirming(null);
+    toast({ message: `Undone: ${describe(e).title}.`, action: { label: "Restore", onClick: () => revoke(r.id) } });
+  }
+
+  function requestUndo(e: LedgerEvent) {
+    // Entries that reshape the whole ledger ask first; everyday entries undo in one tap.
+    if (describe(e).structural) setConfirming(e);
+    else void undo(e);
+  }
+
+  async function restore(revokerId: string, title: string) {
+    await revoke(revokerId);
+    toast({ message: `Restored: ${title}.`, tone: "teal" });
   }
 
   return (
     <>
-      <Header title="Log" sub="Every change, newest first" />
+      <Header title="Log" sub="Every change, newest first" sticker={<Sticker kind="squiggle" tone="violet" size={18} inline />} />
 
-      <Card tone="violet" className="mb-3">
-        <CardTitle className="mb-2">Quick log</CardTitle>
-        <div className="flex flex-col gap-2">
-          {prayers.map((p) => (
-            <div key={p} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2">
-              <span className="text-[13px] font-bold">{PRAYER_LABEL[p]}</span>
-              <Button size="sm" onClick={() => quick(p, 1)}>
-                +1
-              </Button>
-              <Button size="sm" onClick={() => quick(p, 5)}>
-                +5
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setPreset(p);
-                  setLogOpen(true);
-                }}
-              >
-                +N
-              </Button>
-            </div>
-          ))}
-        </div>
+      <div className="mb-4 flex flex-col gap-2">
         <Button
+          tone="coral"
+          size="lg"
           block
-          className="mt-3"
           onClick={() => {
             setPreset(undefined);
             setLogOpen(true);
           }}
         >
-          Backdate or log a full day
+          Log qada
         </Button>
-      </Card>
+        <Button block variant="flat" aria-expanded={padOpen} aria-controls="quick-pad" onClick={() => setPadOpen((v) => !v)}>
+          {padOpen ? "Hide quick buttons" : "Show quick +1 and +5 buttons"}
+        </Button>
+        {padOpen && (
+          <Card id="quick-pad">
+            <CardTitle className="mb-2">Quick log for today</CardTitle>
+            <div className="flex flex-col gap-2">
+              {prayers.map((p) => (
+                <div key={p} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
+                  <span className="text-[15px] font-extrabold">{PRAYER_LABEL[p]}</span>
+                  <Button size="sm" className="w-[60px] px-0" aria-label={`Log 1 ${PRAYER_LABEL[p]} qada`} onClick={() => quick(p, 1)}>
+                    +1
+                  </Button>
+                  <Button size="sm" className="w-[60px] px-0" aria-label={`Log 5 ${PRAYER_LABEL[p]} qada`} onClick={() => quick(p, 5)}>
+                    +5
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+      </div>
 
       {!ready ? null : groups.length === 0 ? (
-        <Card>
-          <CardTitle>Nothing logged yet</CardTitle>
-          <p className="mt-1 text-[12px] font-semibold text-mute">Your first entry will appear here.</p>
+        <Card tone="yellow">
+          <CardTitle className="text-[17px]">Nothing logged yet</CardTitle>
+          <p className="mt-1 text-[13px] font-semibold">Your first entry appears here. Everything can be undone, and anything undone can be restored.</p>
         </Card>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           {groups.map(([day, events]) => (
-            <section key={day}>
-              <h2 className="mb-1.5 px-1 text-[12px] font-extrabold text-mute">{fmtDay(day)}</h2>
-              <Card className="px-0 py-0">
-                {events.map((e, i) => {
-                  const d = describe(e);
-                  return (
-                    <div key={e.id} className={`flex items-center gap-3 px-3.5 py-2.5 ${i > 0 ? "border-t-2 border-ink" : ""}`}>
-                      {d.prayer ? <Chip tone={TONE[d.prayer]} className="w-[74px] justify-center">{PRAYER_LABEL[d.prayer]}</Chip> : <Chip tone="grey" className="w-[74px] justify-center">plan</Chip>}
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[13px] font-bold">{d.title}</div>
-                        <div className="text-[11px] font-semibold text-mute">
-                          {fmtTime(new Date(e.occurredAt), settings.prayer.location?.tz)}
-                          {d.detail ? ` · ${d.detail}` : ""}
+            <section key={day} aria-label={fmtDay(day)}>
+              <h2 className="ml-3 inline-block rounded-t-[var(--r-sm)] border-[length:var(--bw)] border-b-0 border-ink bg-ink px-2.5 py-1 text-[11px] font-black tracking-[0.04em] text-cream">{fmtDay(day).toUpperCase()}</h2>
+              <Card padded={false}>
+                <ul>
+                  {events.map((e, i) => {
+                    const d = describe(e);
+                    return (
+                      <li key={e.id} className={`flex items-stretch gap-3 ${i > 0 ? "border-t-[length:var(--bw)] border-ink" : ""}`}>
+                        <span aria-hidden className={`w-2 shrink-0 border-r-[length:var(--bw)] border-ink ${RAIL[d.direction]}`} />
+                        <div className="min-w-0 flex-1 py-2.5">
+                          <div className="line-clamp-2 text-[15px] font-extrabold leading-tight">{d.title}</div>
+                          <div className="mt-0.5 text-[11px] font-semibold text-mute">
+                            {fmtTime(new Date(e.occurredAt), tz)}
+                            {d.detail ? ` · ${d.detail}` : ""}
+                            {d.direction === "down" ? " · lowers what you owe" : d.direction === "up" ? " · adds to what you owe" : ""}
+                          </div>
                         </div>
-                      </div>
-                      {e.type !== "event.revoked" && (
-                        <button type="button" onClick={() => undo(e)} className="brut-sm pressable rounded-[8px] px-2.5 py-1.5 text-[12px] font-extrabold" aria-label={`Undo ${d.title}`}>
-                          Undo
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                        <div className="flex shrink-0 items-center pr-2">
+                          <IconButton icon="undo" label={`Undo: ${d.title}`} flat onClick={() => requestUndo(e)} />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               </Card>
             </section>
           ))}
         </div>
       )}
 
+      {state.undone.length > 0 && (
+        <section className="mt-5">
+          <Button block variant="flat" aria-expanded={showUndone} onClick={() => setShowUndone((v) => !v)}>
+            {showUndone ? "Hide" : "Show"} {state.undone.length} undone {state.undone.length === 1 ? "entry" : "entries"}
+          </Button>
+          {showUndone && (
+            <Card padded={false} className="mt-3">
+              <ul>
+                {state.undone.map((u, i) => {
+                  const d = describe(u.event);
+                  return (
+                    <li key={u.event.id} className={`flex items-center gap-3 py-2 pl-4 pr-2 ${i > 0 ? "border-t-[length:var(--bw)] border-ink" : ""}`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="line-clamp-2 text-[15px] font-extrabold leading-tight text-mute line-through decoration-2">{d.title}</div>
+                        <div className="mt-0.5 text-[11px] font-semibold text-mute">undone {fmtDay(localDateString(new Date(u.undoneAt), u.event.tz))}</div>
+                      </div>
+                      <IconButton icon="restore" label={`Restore: ${d.title}`} flat onClick={() => restore(u.revokerId, d.title)} />
+                    </li>
+                  );
+                })}
+              </ul>
+            </Card>
+          )}
+        </section>
+      )}
+
+      <PageFoot>
+        <Sticker kind="dot" tone="orange" size={16} inline />
+        <Sticker kind="star" tone="teal" size={20} rotate={-8} inline />
+      </PageFoot>
+
       <QuickLogSheet open={logOpen} onClose={() => setLogOpen(false)} prayers={prayers} today={schedule.prayerDay} defaultPrayer={preset} />
+
+      <Sheet
+        open={Boolean(confirming)}
+        onClose={() => setConfirming(null)}
+        title="Undo this entry?"
+        footer={
+          <div className="flex gap-3">
+            <Button block onClick={() => setConfirming(null)}>
+              Keep it
+            </Button>
+            <Button block tone="rust" onClick={() => confirming && undo(confirming)}>
+              Undo it
+            </Button>
+          </div>
+        }
+      >
+        {confirming && (
+          <>
+            <p className="text-[17px] font-black leading-tight">{describe(confirming).title}</p>
+            <p className="mt-2 text-[13px] font-semibold text-mute">This entry shapes your whole ledger, so your totals and projections will change. You can restore it afterwards from the undone entries at the bottom of the Log.</p>
+          </>
+        )}
+      </Sheet>
     </>
   );
 }

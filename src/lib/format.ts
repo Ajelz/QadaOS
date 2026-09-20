@@ -8,6 +8,11 @@ export function fmtTime(d: Date, tz?: string): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" }).format(d).toLowerCase();
 }
 
+/** "12:31" for tight spaces such as prayer tiles; the prayer name disambiguates am/pm. */
+export function fmtTimeShort(d: Date, tz?: string): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" }).format(d).replace(/\s?[AP]M$/i, "");
+}
+
 function dayToDate(day: PrayerDay): Date {
   const [y, m, d] = day.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d, 12));

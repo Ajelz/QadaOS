@@ -6,7 +6,7 @@ import { AppProviders } from "@/components/AppProviders";
 const archivo = Archivo({
   variable: "--font-archivo",
   subsets: ["latin"],
-  weight: ["500", "600", "700", "800", "900"],
+  weight: ["600", "700", "800", "900"],
   display: "swap",
 });
 
@@ -31,7 +31,6 @@ export const viewport: Viewport = {
   themeColor: "#FAF3E7",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
 };
 

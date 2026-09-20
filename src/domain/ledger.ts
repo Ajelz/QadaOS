@@ -60,9 +60,19 @@ export interface LedgerState {
   qadaByDay: Record<PrayerDay, Partial<Record<Prayer, number>>>;
   periods: Period[];
   activeStrategy?: Strategy;
+  /** Ids of every event that is currently undone (including undone revocations). */
   revoked: Set<string>;
   /** Events that survived revocation, in canonical order. */
   events: LedgerEvent[];
+  /** Undone events, newest undo first, each with the revocation to revoke in order to restore it. */
+  undone: UndoneEvent[];
+}
+
+export interface UndoneEvent {
+  event: LedgerEvent;
+  /** Revoke this id to restore `event`. */
+  revokerId: string;
+  undoneAt: string;
 }
 
 export function resolutionKey(prayerDay: PrayerDay, prayer: Prayer): string {
@@ -90,16 +100,30 @@ export function emptyState(): LedgerState {
     activeStrategy: undefined,
     revoked: new Set(),
     events: [],
+    undone: [],
   };
 }
 
 export function reduce(input: readonly LedgerEvent[]): LedgerState {
   const state = emptyState();
 
-  // Revocations apply regardless of where they sit in the list.
-  for (const e of input) {
-    if (e.type === "event.revoked") state.revoked.add(e.payload.target);
+  // A revocation is itself an event, so it can be revoked too: that is how "restore" works.
+  // A revocation can only target something older than itself, so walking newest-first
+  // settles every revocation before we reach anything it points at.
+  const byId = new Map(input.map((e) => [e.id, e] as const));
+  const revocations = sortEvents(input.filter((e) => e.type === "event.revoked")).reverse();
+  const liveRevoker = new Map<string, LedgerEvent>();
+  for (const r of revocations) {
+    if (r.type !== "event.revoked" || state.revoked.has(r.id)) continue;
+    state.revoked.add(r.payload.target);
+    if (!liveRevoker.has(r.payload.target)) liveRevoker.set(r.payload.target, r);
   }
+  for (const [targetId, revoker] of liveRevoker) {
+    const target = byId.get(targetId);
+    if (!target || target.type === "event.revoked") continue;
+    state.undone.push({ event: target, revokerId: revoker.id, undoneAt: revoker.occurredAt });
+  }
+  state.undone.sort((a, b) => (a.undoneAt < b.undoneAt ? 1 : a.undoneAt > b.undoneAt ? -1 : 0));
 
   const live = sortEvents(input).filter((e) => e.type !== "event.revoked" && !state.revoked.has(e.id));
   state.events = live;

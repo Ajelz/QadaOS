@@ -1,14 +1,27 @@
 import Link from "next/link";
+import { buttonClass } from "@/components/ui/Button";
+import { Sticker } from "@/components/ui/Sticker";
 
 export default function NotFound() {
   return (
-    <main className="mx-auto flex min-h-full w-full max-w-[480px] flex-col justify-center gap-4 px-4 py-10 safe-top">
-      <div className="brut inline-block w-fit rounded-[14px] bg-yellow px-4 py-3">
-        <h1 className="display text-[28px]">Nothing here</h1>
+    <main className="mx-auto flex min-h-full w-full max-w-[480px] flex-col px-4 pb-10 pt-[calc(env(safe-area-inset-top,0px)+2.5rem)]">
+      <div className="my-auto flex flex-col gap-4">
+        <div className="brut rounded-[var(--r-card)] bg-ink px-4 py-3 text-cream">
+          <h1 className="display text-[28px]">Nothing here</h1>
+        </div>
+        <p className="text-[15px] font-bold">
+          That page does not exist. Your ledger is where you left it.
+        </p>
+        <Link
+          href="/"
+          className={buttonClass({ tone: "coral", size: "lg", block: true })}
+        >
+          Back to Today
+        </Link>
+        <div aria-hidden className="mt-2 flex justify-center">
+          <Sticker kind="star" tone="yellow" size={24} rotate={-10} inline />
+        </div>
       </div>
-      <Link href="/" className="brut pressable inline-flex w-fit rounded-[12px] bg-paper px-4 py-3 text-[15px] font-extrabold">
-        Back to Today
-      </Link>
     </main>
   );
 }

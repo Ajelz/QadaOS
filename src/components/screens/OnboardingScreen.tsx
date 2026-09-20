@@ -1,56 +1,93 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LocationPicker } from "@/components/LocationPicker";
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
-import { Sticker } from "@/components/ui/Sticker";
+import { PageFoot, Sticker } from "@/components/ui/Sticker";
 import { useToast } from "@/components/ui/Toast";
-import type { SettingsDoc } from "@/domain/schemas";
-import { TEMPLATES } from "@/domain/strategy";
-import { FARD_PRAYERS, PRAYER_LABEL, type Prayer } from "@/domain/types";
-import { fmtInt } from "@/lib/format";
-import { isIosNotInstalled, pushSupported, enablePush } from "@/lib/pushClient";
+import { localDateString } from "@/domain/prayerDay";
+import { SettingsDocSchema, type SettingsDoc } from "@/domain/schemas";
+import { simulateFinish, TEMPLATES } from "@/domain/strategy";
+import { FARD_PRAYERS, perPrayer, PRAYER_LABEL, type Prayer } from "@/domain/types";
+import { fmtInt, fmtMonth, fmtRelativeDays } from "@/lib/format";
+import { enablePush, isIosNotInstalled, pushSupported } from "@/lib/pushClient";
+import { useClientValue } from "@/lib/useClientValue";
 import { useLedgerActions, useSettings, useSettingsActions } from "@/store/hooks";
 
-const STEPS = ["Where", "How", "Owed", "Plan", "Remind"] as const;
-const selectCls = "brut-sm rounded-[8px] bg-paper px-2.5 py-2 text-[13px] font-bold";
-const inputCls = "brut-sm num rounded-[8px] bg-paper px-2.5 py-2 text-[16px] font-extrabold w-full";
+const STEPS = ["Where you pray", "How you calculate", "What you owe", "Your plan", "Reminders"] as const;
+const DRAFT_KEY = "qadaos:onboarding-draft:v1";
 
-function daysBetweenDates(a: string, b: string): number {
-  const ms = new Date(b).getTime() - new Date(a).getTime();
-  return Math.max(0, Math.round(ms / 86_400_000));
+interface Draft {
+  step: number;
+  prayer: SettingsDoc["prayer"];
+  debt: Record<Prayer, string>;
+  template: string | null;
 }
 
+function loadDraft(fallback: SettingsDoc["prayer"]): Draft {
+  const empty: Draft = { step: 0, prayer: fallback, debt: { fajr: "", dhuhr: "", asr: "", maghrib: "", isha: "", witr: "" }, template: TEMPLATES[0].id };
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return empty;
+    const d = JSON.parse(raw) as Partial<Draft>;
+    const prayer = SettingsDocSchema.shape.prayer.safeParse(d.prayer);
+    return { step: Math.min(4, Math.max(0, Number(d.step) || 0)), prayer: prayer.success ? prayer.data : fallback, debt: { ...empty.debt, ...(d.debt ?? {}) }, template: d.template === null ? null : (d.template ?? empty.template) };
+  } catch {
+    return empty;
+  }
+}
+
+function daysBetweenDates(a: string, b: string): number {
+  return Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86_400_000));
+}
+
+/** The draft lives in localStorage, so the flow only mounts on the client, after it can be read. */
 export function OnboardingScreen() {
+  const mounted = useClientValue(() => true, false);
+  const { settings, ready } = useSettings();
+  if (!mounted || !ready) return <div aria-busy="true" className="min-h-[60vh]" />;
+  return <Flow initialPrayer={settings.prayer} />;
+}
+
+function Flow({ initialPrayer }: { initialPrayer: SettingsDoc["prayer"] }) {
   const router = useRouter();
   const toast = useToast();
-  const { settings } = useSettings();
   const { patch } = useSettingsActions();
   const { append } = useLedgerActions();
-  const [step, setStep] = useState(0);
 
-  // Local draft; committed at the end so backing out leaves nothing half-written.
-  const [prayer, setPrayerDraft] = useState<SettingsDoc["prayer"]>(settings.prayer);
-  const prayers = useMemo<Prayer[]>(() => (prayer.trackWitr ? [...FARD_PRAYERS, "witr"] : [...FARD_PRAYERS]), [prayer.trackWitr]);
-  const [debt, setDebt] = useState<Record<Prayer, string>>({ fajr: "", dhuhr: "", asr: "", maghrib: "", isha: "", witr: "" });
+  const [draft, setDraft] = useState<Draft>(() => loadDraft(initialPrayer));
+  const { step, prayer, debt, template } = draft;
+  const set = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }));
+
   const [wizard, setWizard] = useState(false);
   const [wStart, setWStart] = useState("");
   const [wEnd, setWEnd] = useState("");
   const [wExempt, setWExempt] = useState(0);
-  const [template, setTemplate] = useState<string | null>(TEMPLATES[0].id);
   const [saving, setSaving] = useState(false);
 
-  const total = useMemo(() => prayers.reduce((s, p) => s + (Number(debt[p]) || 0), 0), [prayers, debt]);
+  // Persist on every change so a reload, or a trip to another app, resumes where you were.
+  useEffect(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      // Storage can be unavailable (private mode); the flow still works for this session.
+    }
+  }, [draft]);
+
+  const prayers = useMemo<Prayer[]>(() => (prayer.trackWitr ? [...FARD_PRAYERS, "witr"] : [...FARD_PRAYERS]), [prayer.trackWitr]);
+  const counts = useMemo(() => perPrayer((p) => (prayers.includes(p) ? Math.max(0, Math.trunc(Number(debt[p]) || 0)) : 0)), [prayers, debt]);
+  const total = prayers.reduce((s, p) => s + counts[p], 0);
+  const today = localDateString(new Date(), prayer.location?.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const chosen = TEMPLATES.find((t) => t.id === template);
+  const chosenFinish = chosen ? simulateFinish(counts, chosen.build(prayers), today) : undefined;
+  const wizardEstimate = wStart && wEnd ? Math.max(0, Math.round(daysBetweenDates(wStart, wEnd) - (daysBetweenDates(wStart, wEnd) / 30.44) * wExempt)) : null;
 
   function applyWizard() {
-    if (!wStart || !wEnd) return;
-    const days = daysBetweenDates(wStart, wEnd);
-    const months = days / 30.44;
-    const perPrayer = Math.max(0, Math.round(days - months * wExempt));
-    setDebt(Object.fromEntries(prayers.map((p) => [p, String(perPrayer)])) as Record<Prayer, string>);
+    if (wizardEstimate === null) return;
+    set({ debt: { ...debt, ...(Object.fromEntries(prayers.map((p) => [p, String(wizardEstimate)])) as Record<Prayer, string>) } });
     setWizard(false);
   }
 
@@ -58,16 +95,17 @@ export function OnboardingScreen() {
     setSaving(true);
     try {
       await patch((d) => ({ ...d, prayer, onboarded: true }));
-      for (const p of prayers) {
-        const n = Math.max(0, Math.trunc(Number(debt[p]) || 0));
-        await append({ type: "debt.set_initial", payload: { v: 1, prayer: p, count: n } });
-      }
-      const t = TEMPLATES.find((x) => x.id === template);
-      if (t) await append({ type: "strategy.started", payload: { v: 1, ...t.build(prayers) } });
+      for (const p of prayers) await append({ type: "debt.set_initial", payload: { v: 1, prayer: p, count: counts[p] } });
+      if (chosen) await append({ type: "strategy.started", payload: { v: 1, ...chosen.build(prayers) } });
       if (withReminders) {
         const r = await enablePush();
         if (r.ok) await patch((d) => ({ ...d, reminders: { ...d.reminders, enabled: true, perPrayer: Object.fromEntries(prayers.map((p) => [p, true])) } }));
-        else toast({ message: "Reminders can be turned on later in Settings.", tone: "yellow" });
+        else toast({ message: "Reminders could not be turned on here. You can try again in Settings.", tone: "yellow", durationMs: 6000 });
+      }
+      try {
+        localStorage.removeItem(DRAFT_KEY);
+      } catch {
+        // ignore
       }
       router.replace("/");
     } finally {
@@ -75,173 +113,230 @@ export function OnboardingScreen() {
     }
   }
 
-  return (
-    <div className="relative flex flex-col gap-4">
-      <Sticker kind="star" tone="coral" size={26} className="-right-1 top-2" rotate={15} />
-      <Sticker kind="squiggle" tone="teal" size={26} className="left-0 top-[68px]" />
+  const iosBlocked = isIosNotInstalled();
+  const canPush = pushSupported();
 
-      <div className="flex items-center gap-1.5" aria-label={`Step ${step + 1} of ${STEPS.length}`}>
-        {STEPS.map((s, i) => (
-          <div key={s} className={`h-2.5 flex-1 rounded-full border-2 border-ink ${i <= step ? "bg-yellow" : "bg-paper"}`} />
-        ))}
+  return (
+    <div className="flex flex-1 flex-col">
+      {/* Progress: pinned to the top, with the sticker in its own reserved space. */}
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 text-[13px] font-extrabold" aria-live="polite">
+            Step {step + 1} of {STEPS.length}: {STEPS[step]}
+          </div>
+          <div className="flex items-center gap-1.5" role="progressbar" aria-label="Setup progress" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={step + 1}>
+            {STEPS.map((s, i) => (
+              <div key={s} className={`h-3 flex-1 rounded-full border-[length:var(--bw)] border-ink ${i <= step ? "bg-coral" : "bg-paper"}`} />
+            ))}
+          </div>
+        </div>
+        <Sticker kind="star" tone="yellow" size={28} rotate={12} inline />
       </div>
 
-      {step === 0 && (
-        <Card>
-          <CardTitle className="mb-1 text-[20px] font-black">Where do you pray?</CardTitle>
-          <p className="mb-3 text-[13px] font-semibold text-mute">Prayer times give you windows: a prayer becomes pending when its window closes. You can skip this.</p>
-          <LocationPicker value={prayer.location} onChange={(location) => setPrayerDraft((p) => ({ ...p, location }))} />
-        </Card>
-      )}
+      {/* Content sits in the middle of tall screens instead of being stranded at the top. */}
+      <div className="flex flex-1 flex-col justify-center gap-4 py-5">
+        {step === 0 && (
+          <Card>
+            <CardTitle className="mb-1 text-[20px]">Where do you pray?</CardTitle>
+            <p className="mb-3 text-[13px] font-semibold text-mute">Your location gives QadaOS your prayer times, so it can show what is due now and ask you about any prayer you did not record. You can skip this and add it later.</p>
+            <LocationPicker key={prayer.location ? `${prayer.location.lat},${prayer.location.lng}` : "none"} value={prayer.location} onChange={(location) => set({ prayer: { ...prayer, location } })} />
+          </Card>
+        )}
 
-      {step === 1 && (
-        <Card>
-          <CardTitle className="mb-1 text-[20px] font-black">How do you calculate?</CardTitle>
-          <p className="mb-3 text-[13px] font-semibold text-mute">QadaOS takes no position on fiqh. Every option here is yours to change later.</p>
-          <div className="flex flex-col gap-3">
-            <label className="flex items-center justify-between gap-3 text-[13px] font-bold">
-              Method
-              <select className={selectCls} value={prayer.method} onChange={(e) => setPrayerDraft((p) => ({ ...p, method: e.target.value as SettingsDoc["prayer"]["method"] }))}>
-                <option value="MuslimWorldLeague">Muslim World League</option>
-                <option value="Egyptian">Egyptian</option>
-                <option value="Karachi">Karachi</option>
-                <option value="UmmAlQura">Umm al-Qura</option>
-                <option value="Dubai">Dubai</option>
-                <option value="MoonsightingCommittee">Moonsighting Committee</option>
-                <option value="NorthAmerica">ISNA</option>
-                <option value="Kuwait">Kuwait</option>
-                <option value="Qatar">Qatar</option>
-                <option value="Singapore">Singapore</option>
-                <option value="Tehran">Tehran</option>
-                <option value="Turkey">Turkey</option>
-              </select>
-            </label>
-            <label className="flex items-center justify-between gap-3 text-[13px] font-bold">
-              Asr
-              <select className={selectCls} value={prayer.madhab} onChange={(e) => setPrayerDraft((p) => ({ ...p, madhab: e.target.value as "shafi" | "hanafi" }))}>
-                <option value="shafi">Standard</option>
-                <option value="hanafi">Hanafi (later)</option>
-              </select>
-            </label>
-            <label className="flex items-center justify-between gap-3 text-[13px] font-bold">
-              Track Witr as debt
-              <input type="checkbox" className="h-6 w-6 accent-[var(--ink)]" checked={prayer.trackWitr} onChange={(e) => setPrayerDraft((p) => ({ ...p, trackWitr: e.target.checked }))} />
-            </label>
-          </div>
-        </Card>
-      )}
-
-      {step === 2 && (
-        <Card>
-          <CardTitle className="mb-1 text-[20px] font-black">How many do you owe?</CardTitle>
-          <p className="mb-3 text-[13px] font-semibold text-mute">An estimate is fine. You can adjust it later and the adjustment stays in your log. Many people round up.</p>
-          {!wizard ? (
-            <>
-              <div className="grid grid-cols-2 gap-2">
-                {prayers.map((p) => (
-                  <label key={p} className="flex flex-col gap-1 text-[12px] font-bold">
-                    {PRAYER_LABEL[p]}
-                    <input id={`debt-${p}`} className={inputCls} inputMode="numeric" placeholder="0" value={debt[p]} onChange={(e) => setDebt((d) => ({ ...d, [p]: e.target.value.replace(/[^\d]/g, "") }))} />
-                  </label>
-                ))}
-              </div>
-              <div className="mt-3 flex items-center justify-between">
-                <Chip tone="yellow" className="num">
-                  {fmtInt(total)} total
-                </Chip>
-                <button type="button" className="text-[12px] font-extrabold underline" onClick={() => setWizard(true)}>
-                  Estimate from dates
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <label className="flex flex-col gap-1 text-[12px] font-bold">
-                When did prayer become obligatory for you? (roughly)
-                <input id="w-start" type="date" className={selectCls} value={wStart} onChange={(e) => setWStart(e.target.value)} />
+        {step === 1 && (
+          <Card>
+            <CardTitle className="mb-1 text-[20px]">How do you calculate?</CardTitle>
+            <p className="mb-3 text-[13px] font-semibold text-mute">QadaOS takes no position between schools. If you are unsure, keep these defaults. Everything here can be changed later in Settings.</p>
+            <div className="flex flex-col gap-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[13px] font-black">Prayer time method</span>
+                <select className="w-full" value={prayer.method} onChange={(e) => set({ prayer: { ...prayer, method: e.target.value as SettingsDoc["prayer"]["method"] } })}>
+                  <option value="MuslimWorldLeague">Muslim World League</option>
+                  <option value="Egyptian">Egyptian General Authority</option>
+                  <option value="Karachi">University of Karachi</option>
+                  <option value="UmmAlQura">Umm al-Qura (Makkah)</option>
+                  <option value="Dubai">Dubai</option>
+                  <option value="MoonsightingCommittee">Moonsighting Committee</option>
+                  <option value="NorthAmerica">ISNA (North America)</option>
+                  <option value="Kuwait">Kuwait</option>
+                  <option value="Qatar">Qatar</option>
+                  <option value="Singapore">Singapore</option>
+                  <option value="Tehran">Tehran</option>
+                  <option value="Turkey">Turkey (Diyanet)</option>
+                </select>
+                <span className="text-[13px] font-semibold text-mute">Usually the one your local mosque or prayer app uses.</span>
               </label>
-              <label className="flex flex-col gap-1 text-[12px] font-bold">
-                When did you start praying consistently?
-                <input id="w-end" type="date" className={selectCls} value={wEnd} onChange={(e) => setWEnd(e.target.value)} />
-              </label>
-              <label className="flex flex-col gap-1 text-[12px] font-bold">
-                Days per month with no obligation (for example during menstruation)
-                <select className={selectCls} value={wExempt} onChange={(e) => setWExempt(Number(e.target.value))}>
-                  {[0, 3, 4, 5, 6, 7, 8, 10].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[13px] font-black">Asr time</span>
+                <select className="w-full" value={prayer.madhab} onChange={(e) => set({ prayer: { ...prayer, madhab: e.target.value as "shafi" | "hanafi" } })}>
+                  <option value="shafi">Standard</option>
+                  <option value="hanafi">Hanafi (begins later)</option>
                 </select>
               </label>
-              {wStart && wEnd && (
-                <Chip tone="yellow" className="num self-start">
-                  about {fmtInt(Math.max(0, Math.round(daysBetweenDates(wStart, wEnd) - (daysBetweenDates(wStart, wEnd) / 30.44) * wExempt)))} of each prayer
-                </Chip>
-              )}
-              <div className="flex gap-2">
-                <Button block onClick={() => setWizard(false)}>
-                  Back
-                </Button>
-                <Button block tone="yellow" disabled={!wStart || !wEnd} onClick={applyWizard}>
-                  Use this
+              <label className="flex items-start gap-3">
+                <input type="checkbox" checked={prayer.trackWitr} onChange={(e) => set({ prayer: { ...prayer, trackWitr: e.target.checked } })} />
+                <span>
+                  <span className="block text-[15px] font-extrabold">Also track Witr</span>
+                  <span className="block text-[13px] font-semibold text-mute">Some schools require making up missed Witr. Leave this off if unsure.</span>
+                </span>
+              </label>
+            </div>
+          </Card>
+        )}
+
+        {step === 2 && (
+          <Card>
+            <CardTitle className="mb-1 text-[20px]">How many do you owe?</CardTitle>
+            {!wizard ? (
+              <>
+                <p className="mb-3 text-[13px] font-semibold text-mute">A rough number is fine. You can adjust it later and the change is kept in your log. Many people round up to be safe.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {prayers.map((p) => (
+                    <label key={p} className="flex min-w-0 flex-col gap-1.5">
+                      <span className="text-[13px] font-black">{PRAYER_LABEL[p]}</span>
+                      <input id={`debt-${p}`} className="num w-full" inputMode="numeric" placeholder="0" value={debt[p]} onChange={(e) => set({ debt: { ...debt, [p]: e.target.value.replace(/[^\d]/g, "").slice(0, 6) } })} />
+                    </label>
+                  ))}
+                  <div className={`flex min-w-0 flex-col justify-end ${prayers.length % 2 === 0 ? "col-span-2" : ""}`}>
+                    <Button variant="flat" size="sm" className="w-full" onClick={() => setWizard(true)}>
+                      Estimate from dates
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-extrabold">Total</span>
+                  <Chip tone="orange" className="num text-[13px]">
+                    {fmtInt(total)} {total === 1 ? "prayer" : "prayers"}
+                  </Chip>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <p className="text-[13px] font-semibold text-mute">Two dates give a starting estimate. It fills in every prayer with the same number, which you can then edit.</p>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-black">Roughly when did prayer become obligatory for you?</span>
+                  <input id="w-start" type="date" className="w-full" value={wStart} max={today} onChange={(e) => setWStart(e.target.value)} />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-black">When did you begin praying regularly?</span>
+                  <input id="w-end" type="date" className="w-full" value={wEnd} min={wStart || undefined} max={today} onChange={(e) => setWEnd(e.target.value)} />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-black">Days each month with no obligation</span>
+                  <select className="w-full" value={wExempt} onChange={(e) => setWExempt(Number(e.target.value))}>
+                    {[0, 3, 4, 5, 6, 7, 8, 10].map((v) => (
+                      <option key={v} value={v}>
+                        {v === 0 ? "None" : `${v} days`}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-[13px] font-semibold text-mute">For example during menstruation. Leave at none if this does not apply to you.</span>
+                </label>
+                {wizardEstimate !== null && (
+                  <Chip tone="orange" className="num self-start text-[13px]">
+                    About {fmtInt(wizardEstimate)} of each prayer
+                  </Chip>
+                )}
+                <div className="flex gap-3">
+                  <Button block onClick={() => setWizard(false)}>
+                    Cancel
+                  </Button>
+                  <Button block tone="coral" disabled={wizardEstimate === null} onClick={applyWizard}>
+                    Use this estimate
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {step === 3 && (
+          <Card>
+            <CardTitle className="mb-1 text-[20px]">Pick a starting plan</CardTitle>
+            <p className="mb-3 text-[13px] font-semibold text-mute">A plan sets your daily targets. Each date shows when you would finish if you met it every day. Switch plans whenever you like: your ledger never changes.</p>
+            <div className="flex flex-col gap-3" role="radiogroup" aria-label="Starting plan">
+              {TEMPLATES.map((t) => {
+                const f = simulateFinish(counts, t.build(prayers), today);
+                const on = template === t.id;
+                return (
+                  <button key={t.id} type="button" role="radio" aria-checked={on} onClick={() => set({ template: t.id })} className={`pressable rounded-[var(--r-btn)] border-[length:var(--bw)] border-ink px-4 py-3 text-left ${on ? "bg-violet" : "bg-paper"}`} style={{ boxShadow: on ? "none" : "var(--shadow)", transform: on ? "translate(2px, 2px)" : undefined }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-[15px] font-black">{t.name}</span>
+                      {f && f.days > 0 && <Chip className="num">{fmtMonth(f.finishDay)}</Chip>}
+                    </div>
+                    <div className="mt-1 text-[13px] font-semibold">
+                      {t.description}
+                      {f && f.days > 0 ? ` About ${fmtRelativeDays(f.days)}.` : ""}
+                    </div>
+                  </button>
+                );
+              })}
+              <button type="button" role="radio" aria-checked={template === null} onClick={() => set({ template: null })} className={`pressable rounded-[var(--r-btn)] border-[length:var(--bw)] border-ink px-4 py-3 text-left ${template === null ? "bg-violet" : "bg-paper"}`} style={{ boxShadow: template === null ? "none" : "var(--shadow)", transform: template === null ? "translate(2px, 2px)" : undefined }}>
+                <div className="text-[15px] font-black">No plan for now</div>
+                <div className="mt-1 text-[13px] font-semibold">Just keep the ledger. Choose a plan later from the Plan tab.</div>
+              </button>
+            </div>
+          </Card>
+        )}
+
+        {step === 4 && (
+          <>
+            <Card tone="orange">
+              <CardTitle className="mb-2">Your setup</CardTitle>
+              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px] font-bold">
+                <dt>You owe</dt>
+                <dd className="num text-right font-black">{fmtInt(total)} prayers</dd>
+                <dt>Prayer times</dt>
+                <dd className="truncate text-right font-black">{prayer.location?.label ?? "Not set"}</dd>
+                <dt>Plan</dt>
+                <dd className="truncate text-right font-black">{chosen?.name ?? "None yet"}</dd>
+                {chosenFinish && chosenFinish.days > 0 && (
+                  <>
+                    <dt>Finish, if you meet it</dt>
+                    <dd className="num text-right font-black">{fmtMonth(chosenFinish.finishDay)}</dd>
+                  </>
+                )}
+              </dl>
+            </Card>
+            <Card>
+              <CardTitle className="mb-1 text-[20px]">Want reminders?</CardTitle>
+              <p className="mb-3 text-[13px] font-semibold text-mute">One notification at the start of each prayer, and one in the evening if any prayer still needs an answer. You can switch each one off later.</p>
+              {iosBlocked && <p className="mb-3 rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-yellow px-3 py-2 text-[13px] font-bold">On iPhone, reminders only work once QadaOS is on your Home Screen. Finish now, then tap Share and Add to Home Screen, and turn reminders on in Settings.</p>}
+              {!canPush && !iosBlocked && <p className="mb-3 rounded-[var(--r-sm)] border-[length:var(--bw)] border-ink bg-grey px-3 py-2 text-[13px] font-bold">This browser cannot receive notifications.</p>}
+              <div className="flex flex-col gap-3">
+                {canPush && !iosBlocked && (
+                  <Button block tone="coral" size="lg" disabled={saving} onClick={() => finish(true)}>
+                    Finish and turn on reminders
+                  </Button>
+                )}
+                <Button block size="lg" tone={canPush && !iosBlocked ? "paper" : "coral"} disabled={saving} onClick={() => finish(false)}>
+                  {canPush && !iosBlocked ? "Finish without reminders" : "Finish"}
                 </Button>
               </div>
-            </div>
-          )}
-        </Card>
-      )}
+            </Card>
+          </>
+        )}
 
-      {step === 3 && (
-        <Card>
-          <CardTitle className="mb-1 text-[20px] font-black">Pick a starting plan</CardTitle>
-          <p className="mb-3 text-[13px] font-semibold text-mute">A plan is just a target generator. Switch whenever you like; your ledger never changes.</p>
-          <div className="flex flex-col gap-2">
-            {TEMPLATES.map((t) => (
-              <button key={t.id} type="button" onClick={() => setTemplate(t.id)} className={`brut pressable rounded-[12px] px-3.5 py-3 text-left ${template === t.id ? "bg-violet" : "bg-paper"}`}>
-                <div className="text-[14px] font-extrabold">{t.name}</div>
-                <div className="text-[12px] font-semibold">{t.description}</div>
-              </button>
-            ))}
-            <button type="button" onClick={() => setTemplate(null)} className={`brut pressable rounded-[12px] px-3.5 py-3 text-left ${template === null ? "bg-violet" : "bg-paper"}`}>
-              <div className="text-[14px] font-extrabold">No plan yet</div>
-              <div className="text-[12px] font-semibold">Just track. Choose a plan later.</div>
-            </button>
+        {!wizard && (
+          <div className="flex gap-3">
+            {step > 0 && (
+              <Button block disabled={saving} onClick={() => set({ step: step - 1 })}>
+                Back
+              </Button>
+            )}
+            {step < 4 && (
+              <Button block tone="coral" onClick={() => set({ step: step + 1 })}>
+                {step === 0 && !prayer.location ? "Skip for now" : "Next"}
+              </Button>
+            )}
           </div>
-        </Card>
-      )}
+        )}
+      </div>
 
-      {step === 4 && (
-        <Card>
-          <CardTitle className="mb-1 text-[20px] font-black">Reminders?</CardTitle>
-          <p className="mb-3 text-[13px] font-semibold text-mute">A push at each prayer&apos;s start and one evening nudge to resolve pending prayers. Each is toggleable later.</p>
-          {isIosNotInstalled() && (
-            <div className="brut-sm mb-3 rounded-[10px] bg-yellow px-3 py-2 text-[12px] font-bold">On iPhone, reminders only work once QadaOS is on your Home Screen: tap Share, then Add to Home Screen. You can turn them on afterwards in Settings.</div>
-          )}
-          {!pushSupported() && <div className="brut-sm mb-3 rounded-[10px] bg-grey px-3 py-2 text-[12px] font-bold">This browser cannot receive push notifications.</div>}
-          <div className="flex flex-col gap-2">
-            <Button block tone="teal" size="lg" disabled={saving || !pushSupported() || isIosNotInstalled()} onClick={() => finish(true)}>
-              Turn on reminders and finish
-            </Button>
-            <Button block size="lg" disabled={saving} onClick={() => finish(false)}>
-              Finish without reminders
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {step < 4 && (
-        <div className="flex gap-2">
-          {step > 0 && (
-            <Button block onClick={() => setStep((s) => s - 1)}>
-              Back
-            </Button>
-          )}
-          <Button block tone="yellow" onClick={() => setStep((s) => s + 1)} disabled={step === 2 && wizard}>
-            {step === 0 && !prayer.location ? "Skip for now" : "Next"}
-          </Button>
-        </div>
-      )}
+      <PageFoot>
+        <Sticker kind="squiggle" tone="teal" size={20} inline />
+        <Sticker kind="dot" tone="violet" size={16} inline />
+      </PageFoot>
     </div>
   );
 }

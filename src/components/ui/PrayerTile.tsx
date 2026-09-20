@@ -1,48 +1,62 @@
 "use client";
 
 import { PRAYER_LABEL, type Prayer } from "@/domain/types";
+import { Icon } from "./Icon";
 
 export type TileState = "done" | "late" | "pending" | "now" | "upcoming" | "missed" | "exempt" | "plain";
 
-const STATE: Record<TileState, { cls: string; badge?: string; sub: string }> = {
-  done: { cls: "bg-teal", badge: "✓", sub: "prayed" },
-  late: { cls: "bg-sky", badge: "✓", sub: "late" },
-  pending: { cls: "bg-yellow", sub: "resolve" },
-  now: { cls: "bg-coral", sub: "now" },
-  upcoming: { cls: "bg-paper text-mute", sub: "" },
-  missed: { cls: "bg-paper border-dashed", badge: "–", sub: "missed" },
-  exempt: { cls: "bg-grey", sub: "exempt" },
-  plain: { cls: "bg-paper", sub: "" },
+const STATE: Record<TileState, { cls: string; sub: string; onColor: boolean }> = {
+  done: { cls: "bg-teal", sub: "prayed", onColor: true },
+  late: { cls: "bg-sky", sub: "late", onColor: true },
+  pending: { cls: "bg-yellow", sub: "resolve", onColor: true },
+  now: { cls: "bg-coral", sub: "now", onColor: true },
+  upcoming: { cls: "bg-paper", sub: "", onColor: false },
+  missed: { cls: "bg-paper hatch", sub: "missed", onColor: false },
+  exempt: { cls: "bg-grey", sub: "exempt", onColor: true },
+  plain: { cls: "bg-paper", sub: "", onColor: false },
 };
 
-export function PrayerTile({
-  prayer,
-  state,
-  time,
-  onClick,
-  compact = false,
-}: {
-  prayer: Prayer;
-  state: TileState;
-  time?: string;
-  onClick?: () => void;
-  compact?: boolean;
-}) {
+/** Only Maghrib is too wide for a narrow tile. */
+const SHORT: Partial<Record<Prayer, string>> = { maghrib: "Magh." };
+
+export function PrayerTile({ prayer, state, time, onClick, dense = false }: { prayer: Prayer; state: TileState; time?: string; onClick?: () => void; dense?: boolean }) {
   const s = STATE[state];
-  const interactive = Boolean(onClick);
-  const Tag = interactive ? "button" : "div";
+  const Tag = onClick ? "button" : "div";
+  const sub = state === "upcoming" ? (time ?? "") : s.sub;
+  const short = SHORT[prayer];
+  // Below the breakpoint the long name does not fit its tile, so the short form shows instead.
+  // Full literal class names: Tailwind only generates classes it can see written out.
+  const longCls = dense ? "max-[479px]:hidden" : "max-[419px]:hidden";
+  const shortCls = dense ? "min-[480px]:hidden" : "min-[420px]:hidden";
+  const description = state === "plain" ? "not answered yet" : state === "upcoming" ? `upcoming${time ? ` at ${time}` : ""}` : state === "pending" ? "pending, needs an answer" : s.sub;
+
   return (
     <Tag
-      type={interactive ? "button" : undefined}
+      type={onClick ? "button" : undefined}
       onClick={onClick}
-      aria-label={`${PRAYER_LABEL[prayer]}: ${s.sub || state}`}
-      className={`relative rounded-[var(--r-tile)] border-[2.5px] border-ink text-center font-extrabold ${s.cls} ${compact ? "px-1 py-1.5 text-[11px]" : "px-1 pb-1.5 pt-2 text-[12px]"} ${interactive ? "pressable cursor-pointer" : ""}`}
-      style={{ boxShadow: "3px 3px 0 var(--ink)" }}
+      aria-label={`${PRAYER_LABEL[prayer]}, ${description}`}
+      className={`flex min-h-[52px] min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-[var(--r-btn)] border-[length:var(--bw)] border-ink px-0.5 py-1.5 text-center ${s.cls} ${onClick ? "pressable" : ""}`}
+      style={{ boxShadow: "var(--shadow-sm)" }}
     >
-      {PRAYER_LABEL[prayer]}
-      {!compact && <small className="mt-0.5 block text-[10px] font-semibold text-mute">{state === "upcoming" || state === "plain" ? time ?? "" : s.sub}</small>}
-      {s.badge && (
-        <span className="absolute -right-1.5 -top-2 grid h-5 w-5 place-items-center rounded-full border-2 border-cream bg-ink text-[11px] text-cream">{s.badge}</span>
+      <span className="whitespace-nowrap text-[13px] font-black leading-none tracking-[-0.01em]">
+        {short ? (
+          <>
+            <span className={longCls}>{PRAYER_LABEL[prayer]}</span>
+            <span className={shortCls}>{short}</span>
+          </>
+        ) : (
+          PRAYER_LABEL[prayer]
+        )}
+      </span>
+      {state === "plain" ? (
+        <span className="mt-0.5 grid h-[18px] w-[18px] place-items-center rounded-[4px] border-2 border-ink bg-paper" aria-hidden />
+      ) : state === "done" || state === "late" ? (
+        <span className="flex items-center gap-0.5 whitespace-nowrap text-[11px] font-bold leading-none text-ink">
+          <Icon name="check" size={11} strokeWidth={3.5} />
+          {sub}
+        </span>
+      ) : (
+        <span className={`num whitespace-nowrap text-[11px] font-bold leading-none ${s.onColor || state === "missed" ? "text-ink" : "text-mute"}`}>{sub || " "}</span>
       )}
     </Tag>
   );

@@ -1,9 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { syncManager, useSyncState } from "@/store/syncManager";
 
-/** Thin ink bar under the header. Silent when everything is synced and online. */
+const base = "mx-4 mb-3 flex min-h-[44px] items-center justify-center gap-2 rounded-[var(--r-btn)] border-[length:var(--bw)] border-ink px-3 py-2 text-center text-[13px] font-extrabold leading-tight text-balance min-[900px]:mx-0";
+const depth = { boxShadow: "var(--shadow-sm)" };
+
+/** A status bar under the top edge. Silent when everything is synced and online. */
 export function SyncBanner() {
   const s = useSyncState();
   const [flash, setFlash] = useState(false);
@@ -28,29 +32,45 @@ export function SyncBanner() {
     };
   }, []);
 
-  if (flash) return <div className="mx-4 rounded-[8px] border-2 border-ink bg-teal px-3 py-1.5 text-center text-[12px] font-bold">Synced</div>;
+  const changes = `${s.unsynced} ${s.unsynced === 1 ? "change" : "changes"}`;
+
+  if (flash)
+    return (
+      <div role="status" className={`${base} bg-teal`} style={depth}>
+        All changes synced
+      </div>
+    );
 
   if (s.status === "offline")
     return (
-      <div className="mx-4 rounded-[8px] border-2 border-ink bg-ink px-3 py-1.5 text-center text-[12px] font-bold text-cream">
-        Offline{s.unsynced > 0 ? `, ${s.unsynced} ${s.unsynced === 1 ? "change" : "changes"} waiting` : ""}
+      <div role="status" className={`${base} bg-ink text-cream`} style={depth}>
+        {s.unsynced > 0 ? `Offline. ${changes} saved here, will sync when you reconnect.` : "Offline. Everything still works and will sync later."}
       </div>
     );
 
   if (s.status === "error")
     return (
-      <button type="button" onClick={() => void syncManager.syncNow()} className="mx-4 rounded-[8px] border-2 border-ink bg-coral px-3 py-1.5 text-center text-[12px] font-bold">
-        Sync failed. Tap to retry.
+      <button type="button" onClick={() => void syncManager.syncNow()} className={`${base} pressable w-[calc(100%-2rem)] bg-ink text-cream min-[900px]:w-full`} style={depth}>
+        Could not sync{s.unsynced > 0 ? ` ${changes}` : ""}. Tap to try again.
       </button>
     );
 
   if (s.status === "unauthenticated")
-    return <div className="mx-4 rounded-[8px] border-2 border-ink bg-yellow px-3 py-1.5 text-center text-[12px] font-bold">Signed out. Changes are saved on this device.</div>;
+    return (
+      <div role="status" className={`${base} bg-paper`} style={depth}>
+        <span>
+          You are signed out. {s.unsynced > 0 ? `${changes} saved on this device.` : "Your ledger is safe on this device."}{" "}
+          <Link href="/sign-in" className="underline">
+            Sign in to sync
+          </Link>
+        </span>
+      </div>
+    );
 
   if (s.unsynced > 0)
     return (
-      <div className="mx-4 rounded-[8px] border-2 border-ink bg-paper px-3 py-1.5 text-center text-[12px] font-bold">
-        Syncing {s.unsynced} {s.unsynced === 1 ? "change" : "changes"}
+      <div role="status" className={`${base} bg-paper`} style={depth}>
+        Syncing {changes}
       </div>
     );
 
